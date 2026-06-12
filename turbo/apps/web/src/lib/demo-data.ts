@@ -1,4 +1,4 @@
-import { canAccessDocument, type RoleAccessPolicy } from "@repo/rag";
+import { canAccessDocument, type RoleAccessPolicy } from "./acl";
 
 export type DemoRole = {
   id: string;

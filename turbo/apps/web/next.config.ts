@@ -1,8 +1,5 @@
-import { withWorkflow } from "workflow/next";
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  transpilePackages: ["@repo/db", "@repo/rag", "@repo/ui"],
-};
+const nextConfig: NextConfig = {};
 
-export default withWorkflow(nextConfig);
+export default nextConfig;

@@ -5,8 +5,6 @@ type IngestDocumentWorkflowInput = {
 };
 
 export async function ingestDocumentWorkflow(input: IngestDocumentWorkflowInput) {
-  "use workflow";
-
   await markDocumentProcessing(input.documentId);
   const parsed = await parseDocument(input);
   const indexed = await indexDocument({
@@ -19,14 +17,10 @@ export async function ingestDocumentWorkflow(input: IngestDocumentWorkflowInput)
 }
 
 async function markDocumentProcessing(documentId: string) {
-  "use step";
-
   console.log(`Document ${documentId} processing`);
 }
 
 async function parseDocument(input: IngestDocumentWorkflowInput) {
-  "use step";
-
   console.log(`Parsing ${input.documentId} from ${input.storageKey}`);
 
   return {
@@ -38,8 +32,6 @@ async function parseDocument(input: IngestDocumentWorkflowInput) {
 async function indexDocument(
   input: IngestDocumentWorkflowInput & { nodeCount: number },
 ) {
-  "use step";
-
   console.log(
     `Indexing ${input.nodeCount} nodes for ${input.documentId} with tags ${input.tagKeys.join(",")}`,
   );
@@ -51,7 +43,5 @@ async function indexDocument(
 }
 
 async function markDocumentReady(documentId: string, nodeCount: number) {
-  "use step";
-
   console.log(`Document ${documentId} ready with ${nodeCount} nodes`);
 }
