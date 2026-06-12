@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 
 import { ingestDocumentWorkflow } from "@/workflows/ingest-document";
-import { getDocumentStorageKey } from "@/lib/queries";
+import { getDocumentStorageKey, getDocumentTagKeys } from "@/lib/queries";
 
 type RouteContext = {
   params: Promise<{
@@ -18,7 +18,16 @@ export async function POST(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Document not found." }, { status: 404 });
   }
 
-  await start(ingestDocumentWorkflow, [{ documentId: id, storageKey: doc.storageKey, tagKeys: ["any"] }]);
+  const tagKeys = await getDocumentTagKeys(id);
+
+  await start(ingestDocumentWorkflow, [
+    {
+      documentId: id,
+      storageKey: doc.storageKey,
+      tagKeys: tagKeys.length > 0 ? tagKeys : ["any"],
+      title: doc.title,
+    },
+  ]);
 
   return NextResponse.json({ documentId: id }, { status: 202 });
 }

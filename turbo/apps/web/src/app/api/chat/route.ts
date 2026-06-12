@@ -1,5 +1,4 @@
 import { gateway } from "@ai-sdk/gateway";
-import { QdrantClient } from "@qdrant/js-client-rest";
 import {
   convertToModelMessages,
   createUIMessageStream,
@@ -13,6 +12,7 @@ import { z } from "zod";
 import { env } from "@/config/env";
 import { buildQdrantAclFilter } from "@/lib/acl";
 import { getCurrentUser } from "@/lib/auth";
+import { createQdrantClient } from "@/lib/qdrant";
 
 export const runtime = "nodejs";
 
@@ -41,12 +41,25 @@ export async function POST(request: Request) {
   let references: Reference[] = [];
 
   if (lastUserText) {
-    const { embedding } = await embed({
-      model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
-      value: lastUserText,
-    });
+    let embedding: number[];
+    try {
+      ({ embedding } = await embed({
+        model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
+        value: lastUserText,
+      }));
+    } catch (err) {
+      console.error("[chat] Embedding error:", err);
+      const isRateLimit =
+        err instanceof Error && /rate.?limit/i.test(err.message);
+      return new Response(
+        isRateLimit
+          ? "The AI gateway is rate-limited right now. Please wait a moment and try again."
+          : "Failed to process your question. Please try again.",
+        { status: isRateLimit ? 429 : 500 },
+      );
+    }
 
-    const qdrant = new QdrantClient({ url: env.QDRANT_URL, apiKey: env.QDRANT_API_KEY });
+    const qdrant = createQdrantClient();
     const aclFilter = buildQdrantAclFilter(role.policy);
 
     try {
