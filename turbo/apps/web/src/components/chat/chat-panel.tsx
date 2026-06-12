@@ -42,8 +42,9 @@ export function ChatPanel({ dictionary }: ChatPanelProps) {
         <ScrollArea className="min-h-0 flex-1 px-8 py-6">
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
             <MessageBubble role="assistant">
-              The RAG layer is ready to retrieve only from documents allowed by
-              the selected user's tag policy.
+              {
+                "The RAG layer is ready to retrieve only from documents allowed by the selected user's tag policy."
+              }
             </MessageBubble>
             <MessageBubble role="user">
               Which documents can this role use?
@@ -83,7 +84,7 @@ export function ChatPanel({ dictionary }: ChatPanelProps) {
                   <Badge variant="secondary">{reference.tag}</Badge>
                 </div>
                 <p className="text-xs leading-5 text-muted-foreground">
-                  "{reference.quote}"
+                  {`"${reference.quote}"`}
                 </p>
               </div>
             ))}

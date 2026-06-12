@@ -22,15 +22,20 @@ export function createLlamaParseCloudParser(
 ): DocumentParser {
   return {
     async parse(input) {
-      const file = new File([input.bytes], input.filename, {
+      const arrayBuffer = input.bytes.buffer.slice(
+        input.bytes.byteOffset,
+        input.bytes.byteOffset + input.bytes.byteLength,
+      ) as ArrayBuffer;
+      const file = new File([arrayBuffer], input.filename, {
         type: input.mimeType,
       });
-      const job = await upload({
+      const uploadParams = {
         file,
         apiKey: config.apiKey,
         region: config.region ?? "us",
         page_separator: "\n\n--- page ---\n\n",
-      });
+      } satisfies Record<string, unknown>;
+      const job = await upload(uploadParams as Parameters<typeof upload>[0]);
       const markdown = await job.markdown();
 
       return markdown

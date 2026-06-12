@@ -126,6 +126,9 @@ export const demoUsers = [
   },
 ] satisfies DemoUser[];
 
+const defaultRole = demoRoles[0] as DemoRole;
+const defaultUser = demoUsers[0] as DemoUser;
+
 export const demoDocuments = [
   {
     id: "doc-nda",
@@ -166,11 +169,11 @@ export const demoDocuments = [
 ] satisfies DemoDocument[];
 
 export function getDemoRole(roleId: string) {
-  return demoRoles.find((role) => role.id === roleId) ?? demoRoles[0];
+  return demoRoles.find((role) => role.id === roleId) ?? defaultRole;
 }
 
 export function getDemoUser(userId: string | undefined) {
-  return demoUsers.find((user) => user.id === userId) ?? demoUsers[0];
+  return demoUsers.find((user) => user.id === userId) ?? defaultUser;
 }
 
 export function getAccessibleDocuments(user: DemoUser) {

@@ -6,8 +6,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./acl": "./src/acl.ts",
+    "./cloud": "./src/cloud.ts",
     "./fixtures": "./src/fixtures.ts",
     "./ingestion": "./src/ingestion.ts",
+    "./providers": "./src/providers.ts",
     "./retrieval": "./src/retrieval.ts"
   },
   "scripts": {

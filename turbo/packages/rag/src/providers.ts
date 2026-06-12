@@ -50,7 +50,7 @@ export type ChatModel = {
   }): unknown;
 };
 
-export type Retriever = {
+export type ContextRetriever = {
   retrieve(input: {
     query: string;
     policy: RoleAccessPolicy;
