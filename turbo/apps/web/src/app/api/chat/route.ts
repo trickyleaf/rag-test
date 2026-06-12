@@ -49,29 +49,43 @@ export async function POST(request: Request) {
     const qdrant = new QdrantClient({ url: env.QDRANT_URL, apiKey: env.QDRANT_API_KEY });
     const aclFilter = buildQdrantAclFilter(role.policy);
 
-    const result = await qdrant.query(env.QDRANT_COLLECTION, {
-      query: embedding,
+    try {
+      const result = await qdrant.query(env.QDRANT_COLLECTION, {
+        query: embedding,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        filter: aclFilter as any,
+        limit: 8,
+        with_payload: true,
+        with_vector: false,
+      });
+
+      references = result.points.map((point) => {
+        const p = (point.payload ?? {}) as Record<string, unknown>;
+        const content = String(p.content ?? "");
+        return {
+          documentId: String(p.documentId ?? ""),
+          chunkId: String(p.chunkId ?? point.id),
+          title: String(p.title ?? p.sourceLabel ?? "Untitled"),
+          quote: content.slice(0, 500),
+          score: point.score ?? 0,
+          pageNumber: typeof p.pageNumber === "number" ? p.pageNumber : undefined,
+        };
+      });
+
+      context = references.map((ref) => `[${ref.title}] ${ref.quote}`).join("\n\n");
+    } catch (err) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      filter: aclFilter as any,
-      limit: 8,
-      with_payload: true,
-      with_vector: false,
-    });
-
-    references = result.points.map((point) => {
-      const p = (point.payload ?? {}) as Record<string, unknown>;
-      const content = String(p.content ?? "");
-      return {
-        documentId: String(p.documentId ?? ""),
-        chunkId: String(p.chunkId ?? point.id),
-        title: String(p.title ?? p.sourceLabel ?? "Untitled"),
-        quote: content.slice(0, 500),
-        score: point.score ?? 0,
-        pageNumber: typeof p.pageNumber === "number" ? p.pageNumber : undefined,
-      };
-    });
-
-    context = references.map((ref) => `[${ref.title}] ${ref.quote}`).join("\n\n");
+      const qdrantError = (err as any)?.data?.status?.error as string | undefined;
+      if (qdrantError?.includes("doesn't exist")) {
+        // Collection not created yet — no documents ingested, proceed with empty context
+        console.warn("[chat] Qdrant collection not found, proceeding with empty context");
+      } else {
+        console.error("[chat] Qdrant retrieval error:", err);
+        return new Response("Failed to retrieve documents from the knowledge base. Please try again.", {
+          status: 500,
+        });
+      }
+    }
   }
 
   const modelMessages = await convertToModelMessages(uiMessages);

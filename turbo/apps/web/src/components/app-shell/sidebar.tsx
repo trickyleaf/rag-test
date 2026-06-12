@@ -4,16 +4,18 @@ import { Bot, FileText, Settings, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { LanguageSwitcher } from "@/components/app-shell/language-switcher";
 import { UserPicker } from "@/components/auth/user-picker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { Dictionary } from "@/i18n/types";
+import type { Dictionary, Locale } from "@/i18n/types";
 import type { AppRole, AppUser } from "@/lib/types";
 
 type SidebarProps = {
   dictionary: Dictionary;
+  locale: Locale;
   currentUser: AppUser;
   currentRole: AppRole;
   users: AppUser[];
@@ -21,7 +23,7 @@ type SidebarProps = {
   onClose: () => void;
 };
 
-export function Sidebar({ dictionary, currentUser, currentRole, users, isOpen, onClose }: SidebarProps) {
+export function Sidebar({ dictionary, locale, currentUser, currentRole, users, isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
 
   const items = [
@@ -77,6 +79,10 @@ export function Sidebar({ dictionary, currentUser, currentRole, users, isOpen, o
       </nav>
 
       <div className="mt-auto space-y-4">
+        <div className="flex justify-end">
+          <LanguageSwitcher locale={locale} />
+        </div>
+
         <UserPicker dictionary={dictionary} selectedUserId={currentUser.id} users={users} />
 
         <div className="flex items-center gap-3 rounded-xl border bg-card p-3">

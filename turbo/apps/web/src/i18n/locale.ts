@@ -1,4 +1,4 @@
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 
 import { en } from "./dictionaries/en";
 import { it } from "./dictionaries/it";
@@ -15,14 +15,7 @@ export async function getLocale(): Promise<Locale> {
   const cookieStore = await cookies();
   const cookieLocale = parseLocale(cookieStore.get("locale")?.value);
 
-  if (cookieLocale) {
-    return cookieLocale;
-  }
-
-  const headerStore = await headers();
-  const acceptLanguage = headerStore.get("accept-language");
-
-  return parseLocale(acceptLanguage) ?? "en";
+  return cookieLocale ?? "it";
 }
 
 export async function getDictionary() {

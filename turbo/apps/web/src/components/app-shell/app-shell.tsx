@@ -5,12 +5,13 @@ import { useState } from "react";
 
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { Button } from "@/components/ui/button";
-import type { Dictionary } from "@/i18n/types";
+import type { Dictionary, Locale } from "@/i18n/types";
 import type { AppRole, AppUser } from "@/lib/types";
 
 type AppShellProps = {
   children: React.ReactNode;
   dictionary: Dictionary;
+  locale: Locale;
   currentUser: AppUser;
   currentRole: AppRole;
   users: AppUser[];
@@ -19,6 +20,7 @@ type AppShellProps = {
 export function AppShell({
   children,
   dictionary,
+  locale,
   currentUser,
   currentRole,
   users,
@@ -39,6 +41,7 @@ export function AppShell({
         currentUser={currentUser}
         dictionary={dictionary}
         isOpen={sidebarOpen}
+        locale={locale}
         onClose={() => setSidebarOpen(false)}
         users={users}
       />
