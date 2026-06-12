@@ -51,6 +51,12 @@ export function buildQdrantAclFilter(policy: RoleAccessPolicy): QdrantAclFilter 
   const allowedTagKeys = normalizeTagKeys(policy.allowedTagKeys);
   const deniedTagKeys = normalizeTagKeys(policy.deniedTagKeys);
 
+  if (allowedTagKeys.length === 0) {
+    return {
+      must: [{ has_id: [] }],
+    };
+  }
+
   return {
     must: [
       {
@@ -60,11 +66,17 @@ export function buildQdrantAclFilter(policy: RoleAccessPolicy): QdrantAclFilter 
         },
       },
     ],
-    must_not: deniedTagKeys.map((tagKey) => ({
-      key: "tagKeys",
-      match: {
-        value: tagKey,
-      },
-    })),
+    ...(deniedTagKeys.length > 0
+      ? {
+          must_not: [
+            {
+              key: "tagKeys",
+              match: {
+                any: deniedTagKeys,
+              },
+            },
+          ],
+        }
+      : {}),
   };
 }
