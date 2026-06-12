@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getDocumentsForRole, saveDocument } from "@/lib/queries";
 import { ingestDocumentWorkflow } from "@/workflows/ingest-document";
 
-const BLOB_UPLOAD_TIMEOUT_MS = 30_000;
+const BLOB_UPLOAD_TIMEOUT_MS = 10_000;
 
 async function uploadToStorage(file: File, documentId: string) {
   const blobUpload = put(`documents/${documentId}/${file.name}`, file, {
