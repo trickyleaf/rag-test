@@ -28,7 +28,7 @@ Il sistema deve partire bene su Vercel, ma restare progettato per un futuro depl
 | Vector DB | Qdrant |
 | Parsing documenti | LlamaParse cloud |
 | LLM | Vercel AI SDK / AI Gateway, modello configurabile |
-| Ingestion | Job asincrono via Workflow SDK |
+| Ingestion | Job asincrono via Vercel Workflows (`workflow` SDK) |
 | ACL | Tag-based access control derivato dal ruolo |
 | Admin | Vede tutto |
 | Logging | Minimo audit log, senza appesantire la v1 |
@@ -398,11 +398,11 @@ Il filtro Qdrant deve garantire:
    - limiti dimensione.
 3. File salvato su storage provider.
 4. Documento creato in DB con status `uploaded`.
-5. Workflow asincrono avviato.
+5. Vercel Workflow asincrono avviato.
 
 ### 8.2 Ingestion asincrona
 
-Workflow previsto:
+Workflow Vercel previsto:
 
 ```txt
 ingestDocument(documentId)
@@ -423,20 +423,34 @@ In caso di errore:
 - audit event;
 - UI mostra retry.
 
-### 8.3 Workflow SDK
+### 8.3 Vercel Workflows
 
-Usare `workflow` package:
+La v1 deve usare esplicitamente **Vercel Workflows** per l'ingestion asincrona e per le operazioni lunghe/retry collegate ai documenti. L'implementazione usa il package `workflow`, che e il Workflow SDK supportato da Vercel:
 
 - `withWorkflow(nextConfig)` in Next config;
 - funzioni con `"use workflow"`;
 - step con `"use step"`;
 - trigger via route handler o server action usando `start`.
+- workflow principale: `ingestDocument(documentId)`;
+- step idempotenti per parsing, chunking, embedding, upsert Qdrant e update DB;
+- retry/error handling gestiti a livello di workflow e riflessi su `documents.status`.
+
+Pattern previsto nell'app Next:
+
+```txt
+apps/web/src/app/workflows/ingest-document.ts
+apps/web/src/app/api/documents/route.ts
+apps/web/src/app/api/documents/[documentId]/retry-ingestion/route.ts
+```
+
+I route handler non devono fare ingestion direttamente: devono validare input, salvare lo stato iniziale e avviare il workflow.
 
 Nota on-prem:
 
 - Workflow SDK gira localmente in sviluppo;
 - per produzione non-Vercel va verificato il runtime supportato al momento dell'implementazione;
-- la logica di ingestion resta incapsulata, cosi puo essere spostata domani su BullMQ/Temporal/queue custom senza riscrivere RAG.
+- la v1 resta comunque progettata intorno a Vercel Workflows;
+- la logica di ingestion resta incapsulata, cosi un domani puo essere spostata su BullMQ/Temporal/queue custom senza riscrivere RAG.
 
 ## 9. Chat e retrieval
 
@@ -679,7 +693,7 @@ VECTOR_PROVIDER=qdrant
 - LlamaParse cloud;
 - Vercel Blob;
 - Vercel AI Gateway;
-- Workflow SDK su Vercel.
+- Vercel Workflows tramite `workflow` SDK.
 
 ### 14.2 Build settings
 
@@ -718,7 +732,7 @@ Sostituzioni previste:
 | LlamaParse cloud | LlamaParse self-hosted o parser locale |
 | Qdrant Cloud | Qdrant self-hosted |
 | Neon | PostgreSQL self-hosted |
-| Workflow SDK su Vercel | Workflow local runtime, BullMQ, Temporal o queue custom |
+| Vercel Workflows via `workflow` SDK | Workflow local runtime, BullMQ, Temporal o queue custom |
 
 La logica deve restare incapsulata in provider sostituibili.
 
@@ -796,7 +810,7 @@ UI:
 
 ### Fase E - Ingestion
 
-1. Workflow SDK entrypoint.
+1. Vercel Workflow entrypoint con `workflow` SDK.
 2. LlamaParse provider.
 3. Chunking.
 4. Embedding provider.
@@ -837,9 +851,10 @@ Quando il piano e approvato, si possono delegare task piccoli e paralleli:
 3. **ACL tests**
    - scrivere test unitari completi per policy tag.
 
-4. **Workflow docs check**
+4. **Vercel Workflows docs check**
    - verificare API corrente del package `workflow`;
-   - confermare modalita local/on-prem.
+   - confermare modalita local e limiti per runtime non-Vercel;
+   - documentare pattern `"use workflow"`, `"use step"` e `start`.
 
 5. **Qdrant filter check**
    - validare struttura payload/filter con SDK attuale.
@@ -850,7 +865,7 @@ Quando il piano e approvato, si possono delegare task piccoli e paralleli:
 
 ## 19. Rischi e punti da verificare
 
-1. **Workflow SDK fuori Vercel**
+1. **Vercel Workflows fuori Vercel**
    - Da verificare bene per produzione on-prem.
    - Mitigazione: ingestion isolata e portabile.
 
