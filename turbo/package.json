@@ -1,6 +1,6 @@
 {
   "name": "rag-test",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ChatGPT-like RAG workspace with Next.js, LlamaParse, Qdrant, and tag-based ACL.",
   "private": true,
   "scripts": {
