@@ -7,6 +7,33 @@ import { getCurrentUser } from "@/lib/auth";
 import { getDocumentsForRole, saveDocument } from "@/lib/queries";
 import { ingestDocumentWorkflow } from "@/workflows/ingest-document";
 
+const BLOB_UPLOAD_TIMEOUT_MS = 30_000;
+
+async function uploadToStorage(file: File, documentId: string) {
+  const blobUpload = put(`documents/${documentId}/${file.name}`, file, {
+    access: "public",
+    token: env.BLOB_READ_WRITE_TOKEN,
+  });
+
+  try {
+    const blob = await Promise.race([
+      blobUpload,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Blob upload timed out.")), BLOB_UPLOAD_TIMEOUT_MS),
+      ),
+    ]);
+    return { storageProvider: "vercel-blob", storageKey: blob.url };
+  } catch (error) {
+    console.warn("[documents] Blob upload failed, falling back to inline storage.", error);
+    const arrayBuffer = await file.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    return {
+      storageProvider: "inline-data-url",
+      storageKey: `data:${file.type || "application/octet-stream"};base64,${base64}`,
+    };
+  }
+}
+
 export async function GET() {
   const { role } = await getCurrentUser();
   const docs = await getDocumentsForRole(role);
@@ -28,10 +55,7 @@ export async function POST(request: Request) {
   const title = String(formData.get("title") || file.name);
   const documentId = crypto.randomUUID();
 
-  const blob = await put(`documents/${documentId}/${file.name}`, file, {
-    access: "public",
-    token: env.BLOB_READ_WRITE_TOKEN,
-  });
+  const { storageKey, storageProvider } = await uploadToStorage(file, documentId);
 
   await saveDocument({
     id: documentId,
@@ -39,15 +63,15 @@ export async function POST(request: Request) {
     originalFilename: file.name,
     mimeType: file.type || "application/octet-stream",
     sizeBytes: file.size,
-    storageProvider: "vercel-blob",
-    storageKey: blob.url,
+    storageProvider,
+    storageKey,
     uploadedByUserId: user.id,
     tagKeys,
   });
 
   void ingestDocumentWorkflow({
     documentId,
-    storageKey: blob.url,
+    storageKey,
     tagKeys,
   }).catch((err: unknown) => {
     console.error(`[ingest] ${documentId} failed:`, err);
