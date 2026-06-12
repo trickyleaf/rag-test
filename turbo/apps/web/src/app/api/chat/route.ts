@@ -13,7 +13,6 @@ import { z } from "zod";
 import { env } from "@/config/env";
 import { buildQdrantAclFilter } from "@/lib/acl";
 import { getCurrentUser } from "@/lib/auth";
-import { getAccessibleDocuments } from "@/lib/demo-data";
 
 export const runtime = "nodejs";
 
@@ -42,46 +41,37 @@ export async function POST(request: Request) {
   let references: Reference[] = [];
 
   if (lastUserText) {
-    try {
-      const { embedding } = await embed({
-        model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
-        value: lastUserText,
-      });
+    const { embedding } = await embed({
+      model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
+      value: lastUserText,
+    });
 
-      const qdrant = new QdrantClient({ url: env.QDRANT_URL, apiKey: env.QDRANT_API_KEY });
-      const aclFilter = buildQdrantAclFilter(role.policy);
+    const qdrant = new QdrantClient({ url: env.QDRANT_URL, apiKey: env.QDRANT_API_KEY });
+    const aclFilter = buildQdrantAclFilter(role.policy);
 
-      const result = await qdrant.query(env.QDRANT_COLLECTION, {
-        query: embedding,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        filter: aclFilter as any,
-        limit: 8,
-        with_payload: true,
-        with_vector: false,
-      });
+    const result = await qdrant.query(env.QDRANT_COLLECTION, {
+      query: embedding,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      filter: aclFilter as any,
+      limit: 8,
+      with_payload: true,
+      with_vector: false,
+    });
 
-      references = result.points.map((point) => {
-        const p = (point.payload ?? {}) as Record<string, unknown>;
-        const content = String(p.content ?? "");
-        return {
-          documentId: String(p.documentId ?? ""),
-          chunkId: String(p.chunkId ?? point.id),
-          title: String(p.title ?? p.sourceLabel ?? "Untitled"),
-          quote: content.slice(0, 500),
-          score: point.score ?? 0,
-          pageNumber: typeof p.pageNumber === "number" ? p.pageNumber : undefined,
-        };
-      });
+    references = result.points.map((point) => {
+      const p = (point.payload ?? {}) as Record<string, unknown>;
+      const content = String(p.content ?? "");
+      return {
+        documentId: String(p.documentId ?? ""),
+        chunkId: String(p.chunkId ?? point.id),
+        title: String(p.title ?? p.sourceLabel ?? "Untitled"),
+        quote: content.slice(0, 500),
+        score: point.score ?? 0,
+        pageNumber: typeof p.pageNumber === "number" ? p.pageNumber : undefined,
+      };
+    });
 
-      context = references.map((ref) => `[${ref.title}] ${ref.quote}`).join("\n\n");
-    } catch (err) {
-      console.error("[chat] Qdrant retrieval failed:", err);
-    }
-  }
-
-  if (!context) {
-    const docs = getAccessibleDocuments(user);
-    context = docs.map((d) => `- ${d.title} [tags: ${d.tagKeys.join(", ")}]`).join("\n");
+    context = references.map((ref) => `[${ref.title}] ${ref.quote}`).join("\n\n");
   }
 
   const modelMessages = await convertToModelMessages(uiMessages);
@@ -120,7 +110,7 @@ export async function POST(request: Request) {
     },
     onError: (error) => {
       console.error("[chat] Stream error:", error);
-      return "An error occurred. Please try again.";
+      return error instanceof Error ? error.message : "An error occurred. Please try again.";
     },
   });
 

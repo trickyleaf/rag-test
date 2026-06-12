@@ -1,8 +1,11 @@
 "use client";
 
-import { FileUp, Search, X } from "lucide-react";
+import NiceModal from "@ebay/nice-modal-react";
+import { Download, FileUp, Search, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+
+import { ConfirmDialog } from "@/components/modals/confirm-dialog";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,7 +35,10 @@ export function DocumentPanel({ dictionary, documents, tags }: DocumentPanelProp
   const [uploadedDocs, setUploadedDocs] = useState<AppDocument[]>([]);
   const [search, setSearch] = useState("");
 
-  const allDocuments = [...uploadedDocs, ...documents];
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+
+  const allDocuments = [...uploadedDocs, ...documents].filter((d) => !deletedIds.has(d.id));
   const filtered = allDocuments.filter(
     (d) =>
       !search ||
@@ -70,8 +76,14 @@ export function DocumentPanel({ dictionary, documents, tags }: DocumentPanelProp
       });
 
       if (!response.ok) {
-        const body = (await response.json()) as { error?: string };
-        throw new Error(body.error ?? "Upload failed");
+        let errorMsg = "Upload failed";
+        try {
+          const body = (await response.json()) as { error?: string };
+          errorMsg = body.error ?? errorMsg;
+        } catch {
+          // non-JSON error body — use default message
+        }
+        throw new Error(errorMsg);
       }
 
       const body = (await response.json()) as { document: AppDocument };
@@ -87,8 +99,34 @@ export function DocumentPanel({ dictionary, documents, tags }: DocumentPanelProp
     }
   }
 
+  async function handleDelete(document: AppDocument) {
+    const confirmed = await NiceModal.show(ConfirmDialog, {
+      title: `Delete "${document.title}"?`,
+      description: "This will permanently remove the document and all its indexed content. This cannot be undone.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+
+    setDeletingId(document.id);
+    try {
+      const res = await fetch(`/api/documents/${document.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Delete failed");
+      }
+      setDeletedIds((prev) => new Set([...prev, document.id]));
+      toast.success(`"${document.title}" deleted.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
-    <section className="space-y-4 border-t p-8" id="documents">
+    <section className="min-h-0 flex-1 overflow-y-auto space-y-4 border-t p-4 sm:p-8" id="documents">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold">{dictionary.documents.title}</h2>
@@ -188,7 +226,27 @@ export function DocumentPanel({ dictionary, documents, tags }: DocumentPanelProp
                   </Badge>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">{document.updatedAt}</p>
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-muted-foreground">{document.updatedAt}</p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  asChild
+                >
+                  <a href={`/api/documents/${document.id}/download`} download>
+                    <Download className="size-4" />
+                  </a>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => handleDelete(document)}
+                  disabled={deletingId === document.id}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ))}

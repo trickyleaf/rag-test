@@ -21,7 +21,7 @@ type SettingsPanelProps = {
 
 export function SettingsPanel({ dictionary, roles, tags, users }: SettingsPanelProps) {
   return (
-    <section className="space-y-4 border-t p-8" id="settings">
+    <section className="min-h-0 flex-1 overflow-y-auto space-y-4 border-t p-4 sm:p-8" id="settings">
       <div className="flex items-center gap-3">
         <ShieldCheck className="size-5" />
         <div>

@@ -1,12 +1,13 @@
 "use client";
 
-import { Bot, FileText, Settings } from "lucide-react";
+import { Bot, FileText, Settings, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { UserPicker } from "@/components/auth/user-picker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { Dictionary } from "@/i18n/types";
 import type { AppRole, AppUser } from "@/lib/types";
@@ -16,9 +17,11 @@ type SidebarProps = {
   currentUser: AppUser;
   currentRole: AppRole;
   users: AppUser[];
+  isOpen: boolean;
+  onClose: () => void;
 };
 
-export function Sidebar({ dictionary, currentUser, currentRole, users }: SidebarProps) {
+export function Sidebar({ dictionary, currentUser, currentRole, users, isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
 
   const items = [
@@ -28,10 +31,22 @@ export function Sidebar({ dictionary, currentUser, currentRole, users }: Sidebar
   ];
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r bg-muted/30 p-4">
-      <div className="space-y-1">
-        <h1 className="text-lg font-semibold">{dictionary.app.title}</h1>
-        <p className="text-sm text-muted-foreground">{dictionary.app.subtitle}</p>
+    <aside
+      className={[
+        "flex h-full w-72 shrink-0 flex-col border-r bg-background p-4",
+        "fixed inset-y-0 left-0 z-30 transition-transform duration-300",
+        "md:relative md:inset-auto md:z-auto md:translate-x-0 md:bg-muted/30 md:transition-none",
+        isOpen ? "translate-x-0" : "-translate-x-full",
+      ].join(" ")}
+    >
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h1 className="text-lg font-semibold">{dictionary.app.title}</h1>
+          <p className="text-sm text-muted-foreground">{dictionary.app.subtitle}</p>
+        </div>
+        <Button className="-mr-1 -mt-1 md:hidden" onClick={onClose} size="icon" variant="ghost">
+          <X className="size-5" />
+        </Button>
       </div>
 
       <Separator className="my-4" />
@@ -52,6 +67,7 @@ export function Sidebar({ dictionary, currentUser, currentRole, users }: Sidebar
                 ].join(" ")}
                 href={item.href}
                 key={item.href}
+                onClick={onClose}
               >
                 <Icon className="size-4" />
                 {item.label}

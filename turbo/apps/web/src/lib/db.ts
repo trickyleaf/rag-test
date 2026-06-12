@@ -10,9 +10,9 @@ function buildDb(url: string) {
 
 let _db: Db | null = null;
 
-export function getDb(): Db | null {
+export function getDb(): Db {
   const url = process.env.DATABASE_URL;
-  if (!url) return null;
+  if (!url) throw new Error("DATABASE_URL is not configured");
   if (!_db) _db = buildDb(url);
   return _db;
 }
