@@ -1,0 +1,32 @@
+{
+  "name": "@repo/rag",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./acl": "./src/acl.ts",
+    "./cloud": "./src/cloud.ts",
+    "./fixtures": "./src/fixtures.ts",
+    "./ingestion": "./src/ingestion.ts",
+    "./providers": "./src/providers.ts",
+    "./retrieval": "./src/retrieval.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "latest",
+    "@qdrant/js-client-rest": "latest",
+    "ai": "latest",
+    "llama-cloud-services": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@repo/config": "workspace:*",
+    "@types/node": "latest",
+    "typescript": "latest"
+  }
+}
