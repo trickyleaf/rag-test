@@ -41,10 +41,23 @@ export async function POST(request: Request) {
   let references: Reference[] = [];
 
   if (lastUserText) {
-    const { embedding } = await embed({
-      model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
-      value: lastUserText,
-    });
+    let embedding: number[];
+    try {
+      ({ embedding } = await embed({
+        model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
+        value: lastUserText,
+      }));
+    } catch (err) {
+      console.error("[chat] Embedding error:", err);
+      const isRateLimit =
+        err instanceof Error && /rate.?limit/i.test(err.message);
+      return new Response(
+        isRateLimit
+          ? "The AI gateway is rate-limited right now. Please wait a moment and try again."
+          : "Failed to process your question. Please try again.",
+        { status: isRateLimit ? 429 : 500 },
+      );
+    }
 
     const qdrant = createQdrantClient();
     const aclFilter = buildQdrantAclFilter(role.policy);

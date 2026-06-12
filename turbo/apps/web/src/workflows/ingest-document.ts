@@ -161,6 +161,12 @@ async function upsertToQdrant(
       vectors: { size: 1536, distance: "Cosine" },
     });
   }
+  // ACL filtering on tagKeys requires a keyword payload index (idempotent).
+  await qdrant.createPayloadIndex(env.QDRANT_COLLECTION, {
+    field_name: "tagKeys",
+    field_schema: "keyword",
+    wait: true,
+  });
   await qdrant.upsert(env.QDRANT_COLLECTION, {
     wait: true,
     points: nodes.map((node, index) => ({
