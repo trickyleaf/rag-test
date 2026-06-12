@@ -1,47 +1,107 @@
-type IngestDocumentWorkflowInput = {
+import { gateway } from "@ai-sdk/gateway";
+import { QdrantClient } from "@qdrant/js-client-rest";
+import { embedMany } from "ai";
+import { upload } from "llama-cloud-services/parse";
+
+import { env } from "@/config/env";
+
+export type IngestDocumentWorkflowInput = {
   documentId: string;
   storageKey: string;
   tagKeys: string[];
 };
 
+type ParsedNode = {
+  id: string;
+  content: string;
+  pageNumber: number;
+};
+
+async function ensureQdrantCollection(client: QdrantClient, collectionName: string) {
+  try {
+    await client.createCollection(collectionName, {
+      vectors: { size: 1536, distance: "Cosine" },
+    });
+  } catch {
+    // Collection already exists — safe to continue
+  }
+}
+
 export async function ingestDocumentWorkflow(input: IngestDocumentWorkflowInput) {
-  await markDocumentProcessing(input.documentId);
-  const parsed = await parseDocument(input);
-  const indexed = await indexDocument({
-    ...input,
-    nodeCount: parsed.nodeCount,
+  if (!env.LLAMA_CLOUD_API_KEY || !env.QDRANT_URL || !env.AI_GATEWAY_API_KEY) {
+    console.warn(
+      `[ingest] Skipping ingestion for ${input.documentId}: ` +
+        "LLAMA_CLOUD_API_KEY, QDRANT_URL, and AI_GATEWAY_API_KEY are all required.",
+    );
+    return { documentId: input.documentId, nodeCount: 0 };
+  }
+
+  // Step 1: Fetch file from blob storage
+  const fileResponse = await fetch(input.storageKey);
+  if (!fileResponse.ok) {
+    throw new Error(`Failed to fetch document from storage: ${fileResponse.statusText}`);
+  }
+  const contentType = fileResponse.headers.get("content-type") ?? "application/pdf";
+  const filename =
+    fileResponse.headers.get("content-disposition")?.match(/filename="(.+?)"/)?.[1] ??
+    input.storageKey.split("/").pop() ??
+    "document.pdf";
+  const arrayBuffer = await fileResponse.arrayBuffer();
+  const file = new File([arrayBuffer], filename, { type: contentType });
+
+  // Step 2: Parse with LlamaParse cloud
+  const job = await upload({
+    file,
+    apiKey: env.LLAMA_CLOUD_API_KEY,
+    region: "us",
+    page_separator: "\n\n--- page ---\n\n",
+  } as Parameters<typeof upload>[0]);
+  const markdown = await job.markdown();
+
+  const nodes: ParsedNode[] = markdown
+    .split("\n\n--- page ---\n\n")
+    .map((content, index) => ({
+      id: crypto.randomUUID(),
+      content: content.trim(),
+      pageNumber: index + 1,
+    }))
+    .filter((node) => node.content.length > 0);
+
+  if (nodes.length === 0) {
+    console.warn(`[ingest] No content extracted for ${input.documentId}`);
+    return { documentId: input.documentId, nodeCount: 0 };
+  }
+
+  // Step 3: Embed all chunks
+  const { embeddings } = await embedMany({
+    model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
+    values: nodes.map((n) => n.content),
   });
-  await markDocumentReady(input.documentId, indexed.nodeCount);
 
-  return indexed;
-}
+  // Step 4: Upsert into Qdrant
+  const qdrant = new QdrantClient({
+    url: env.QDRANT_URL,
+    apiKey: env.QDRANT_API_KEY,
+  });
 
-async function markDocumentProcessing(documentId: string) {
-  console.log(`Document ${documentId} processing`);
-}
+  await ensureQdrantCollection(qdrant, env.QDRANT_COLLECTION);
 
-async function parseDocument(input: IngestDocumentWorkflowInput) {
-  console.log(`Parsing ${input.documentId} from ${input.storageKey}`);
+  await qdrant.upsert(env.QDRANT_COLLECTION, {
+    wait: true,
+    points: nodes.map((node, index) => ({
+      id: node.id,
+      vector: embeddings[index] ?? [],
+      payload: {
+        documentId: input.documentId,
+        chunkId: node.id,
+        tagKeys: input.tagKeys,
+        chunkIndex: index,
+        content: node.content,
+        pageNumber: node.pageNumber,
+      },
+    })),
+  });
 
-  return {
-    documentId: input.documentId,
-    nodeCount: 0,
-  };
-}
-
-async function indexDocument(
-  input: IngestDocumentWorkflowInput & { nodeCount: number },
-) {
-  console.log(
-    `Indexing ${input.nodeCount} nodes for ${input.documentId} with tags ${input.tagKeys.join(",")}`,
-  );
-
-  return {
-    documentId: input.documentId,
-    nodeCount: input.nodeCount,
-  };
-}
-
-async function markDocumentReady(documentId: string, nodeCount: number) {
-  console.log(`Document ${documentId} ready with ${nodeCount} nodes`);
+  console.log(`[ingest] ${input.documentId}: indexed ${nodes.length} nodes`);
+  return { documentId: input.documentId, nodeCount: nodes.length };
 }

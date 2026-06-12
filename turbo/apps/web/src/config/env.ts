@@ -2,7 +2,8 @@ import { z } from "zod";
 
 const envSchema = z.object({
   AI_GATEWAY_API_KEY: z.string().optional(),
-  AI_GATEWAY_MODEL: z.string().default("openai/gpt-5-mini"),
+  AI_GATEWAY_MODEL: z.string().default("openai/gpt-4o-mini"),
+  AI_EMBEDDING_MODEL: z.string().default("openai/text-embedding-3-small"),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   DATABASE_URL: z.string().optional(),
   LLAMA_CLOUD_API_KEY: z.string().optional(),

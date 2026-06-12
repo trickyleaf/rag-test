@@ -8,6 +8,11 @@ export type DocumentAccessMetadata = {
   tagKeys: readonly string[];
 };
 
+export type QdrantAclFilter = {
+  must?: Array<Record<string, unknown>>;
+  must_not?: Array<Record<string, unknown>>;
+};
+
 export function normalizeTagKeys(tagKeys: readonly string[]) {
   return [...new Set(tagKeys.map((tagKey) => tagKey.trim()).filter(Boolean))];
 }
@@ -38,4 +43,36 @@ export function canAccessDocument(
   );
 
   return hasAllowedTag && !hasDeniedTag;
+}
+
+export function buildQdrantAclFilter(policy: RoleAccessPolicy): QdrantAclFilter {
+  if (policy.isAdmin) {
+    return {};
+  }
+
+  const allowedTagKeys = normalizeTagKeys(policy.allowedTagKeys);
+  const deniedTagKeys = normalizeTagKeys(policy.deniedTagKeys);
+
+  if (allowedTagKeys.length === 0) {
+    return { must: [{ has_id: [] }] };
+  }
+
+  return {
+    must: [
+      {
+        key: "tagKeys",
+        match: { any: allowedTagKeys },
+      },
+    ],
+    ...(deniedTagKeys.length > 0
+      ? {
+          must_not: [
+            {
+              key: "tagKeys",
+              match: { any: deniedTagKeys },
+            },
+          ],
+        }
+      : {}),
+  };
 }
