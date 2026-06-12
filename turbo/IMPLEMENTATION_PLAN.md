@@ -11,7 +11,7 @@ Costruire un'applicazione RAG ChatGPT-like dentro `/turbo`, basata su Turborepo 
 - ricevere risposte con references, citazioni e documenti sorgente;
 - amministrare utenti, ruoli e tag da una sezione settings.
 
-Il sistema deve partire bene su Vercel, ma restare progettato per un futuro deployment on-prem.
+Il sistema deve partire bene su Vercel, ma restare progettato per un futuro deployment on-prem. Il target finale previsto e una soluzione Kubernetes/on-prem basata su LlamaIndex on-prem per parsing, ingestion e RAG orchestration.
 
 ## 2. Decisioni gia prese
 
@@ -26,7 +26,7 @@ Il sistema deve partire bene su Vercel, ma restare progettato per un futuro depl
 | Auth iniziale | Mock auth: scelta utente da schermata |
 | DB | Neon PostgreSQL |
 | Vector DB | Qdrant |
-| Parsing documenti | LlamaParse cloud |
+| Parsing documenti | LlamaParse cloud nella v1, sostituibile con LlamaIndex/LlamaParse on-prem |
 | LLM | Vercel AI SDK / AI Gateway, modello configurabile |
 | Ingestion | Job asincrono via Vercel Workflows (`workflow` SDK) |
 | ACL | Tag-based access control derivato dal ruolo |
@@ -76,9 +76,12 @@ Prima di proseguire l'implementazione, va stabilizzato lo scaffold:
    - Schema DB e seed nel package `@repo/db`.
    - Componenti generici nel package `@repo/ui`.
 
-3. **Astrazioni utili per on-prem**
+3. **Confini sostituibili utili per on-prem**
    - Non legare direttamente la logica a Vercel Blob, AI Gateway, Qdrant cloud o LlamaParse cloud.
-   - Usare interfacce sostituibili per storage, parser, LLM, embeddings, vector store.
+   - Usare adapter/interfacce sostituibili per storage, parser, LLM, embeddings, vector store e ingestion runner.
+   - Evitare astrazioni inutilmente generiche: ogni boundary deve corrispondere a una sostituzione reale prevista.
+   - La sostituzione principale attesa e cloud LlamaParse/AI Gateway verso LlamaIndex on-prem su Kubernetes.
+   - I contratti devono restare vicini ai concetti LlamaIndex: documenti, nodes/chunks, metadata, retriever, citations.
 
 4. **Sicurezza prima della UX**
    - L'ACL deve essere applicata lato server.
@@ -423,6 +426,18 @@ In caso di errore:
 - audit event;
 - UI mostra retry.
 
+### 8.2.1 Boundary LlamaIndex
+
+La v1 usa servizi cloud dove conviene, ma il codice RAG deve essere disegnato come se il backend finale fosse LlamaIndex on-prem:
+
+- il parser cloud LlamaParse deve essere un adapter sottile;
+- chunk/nodes e metadata devono usare nomi e forme compatibili con LlamaIndex;
+- retrieval e citations devono restare indipendenti dalla UI e dalle route Next;
+- Qdrant va trattato come vector store sostituibile/configurabile, non come logica business;
+- embeddings e modello chat devono essere configurabili via provider OpenAI-compatible quando si passera a modelli on-prem.
+
+Non serve introdurre astrazioni speculative per ogni singola chiamata: servono pochi confini chiari, testabili, e realmente necessari per sostituire cloud provider con componenti Kubernetes/on-prem.
+
 ### 8.3 Vercel Workflows
 
 La v1 deve usare esplicitamente **Vercel Workflows** per l'ingestion asincrona e per le operazioni lunghe/retry collegate ai documenti. L'implementazione usa il package `workflow`, che e il Workflow SDK supportato da Vercel:
@@ -679,7 +694,8 @@ Provider futura on-prem:
 ```txt
 STORAGE_PROVIDER=vercel-blob|minio|filesystem
 LLM_PROVIDER=vercel-gateway|openai-compatible|ollama|vllm
-PARSER_PROVIDER=llamaparse-cloud|local
+RAG_ORCHESTRATOR=llamaindex-cloud-adapter|llamaindex-onprem
+PARSER_PROVIDER=llamaparse-cloud|llamaparse-onprem|llamaindex-onprem
 VECTOR_PROVIDER=qdrant
 ```
 
@@ -723,18 +739,37 @@ apps/web/.next
 
 ## 15. Percorso on-prem futuro
 
+Il percorso on-prem non e un generico "forse un giorno": e il target architetturale di lungo periodo. La v1 puo usare dipendenze cloud, ma deve farlo in modo che il passaggio a LlamaIndex on-prem su Kubernetes richieda soprattutto cambio di adapter/configurazione, non riscrittura di UI, ACL o schema dati.
+
 Sostituzioni previste:
 
 | Vercel/cloud v1 | On-prem futuro |
 | --- | --- |
 | Vercel Blob | MinIO o filesystem |
-| Vercel AI Gateway | Ollama, vLLM, TGI, provider OpenAI-compatible |
-| LlamaParse cloud | LlamaParse self-hosted o parser locale |
+| Vercel AI Gateway | modello on-prem via Ollama, vLLM, TGI o endpoint OpenAI-compatible |
+| LlamaParse cloud | LlamaIndex/LlamaParse on-prem |
 | Qdrant Cloud | Qdrant self-hosted |
 | Neon | PostgreSQL self-hosted |
 | Vercel Workflows via `workflow` SDK | Workflow local runtime, BullMQ, Temporal o queue custom |
 
-La logica deve restare incapsulata in provider sostituibili.
+La logica deve restare incapsulata in provider sostituibili, ma senza duplicare concetti gia espressi bene da LlamaIndex. Gli adapter devono essere pochi:
+
+- `DocumentStorage`;
+- `DocumentParser` / `LlamaIndexParser`;
+- `EmbeddingProvider`;
+- `VectorStore`;
+- `Retriever`;
+- `ChatModel`;
+- `IngestionRunner`.
+
+La business logic stabile resta:
+
+- ACL/tag policy;
+- mapping utenti/ruoli/tag;
+- document metadata;
+- audit;
+- UI chat/documenti/settings;
+- references/citations contract.
 
 ## 16. Test e qualita
 
@@ -877,11 +912,15 @@ Quando il piano e approvato, si possono delegare task piccoli e paralleli:
    - Va normalizzato bene per citazioni/pagine.
    - Mitigazione: metadata parser standardizzati.
 
-4. **ACL in Qdrant**
+4. **Over-abstraction RAG**
+   - Rischio: creare astrazioni troppo generiche che duplicano LlamaIndex invece di facilitarne l'adozione on-prem.
+   - Mitigazione: adapter sottili, contratti vicini a document/nodes/retriever/citations, e business logic separata solo dove serve davvero.
+
+5. **ACL in Qdrant**
    - Il filtro deve essere testato contro array payload.
    - Mitigazione: test unitari e, appena possibile, integration test.
 
-5. **AI Gateway model choice**
+6. **AI Gateway model choice**
    - Modello configurabile via env.
    - Default da scegliere in base a disponibilita e costo.
 
