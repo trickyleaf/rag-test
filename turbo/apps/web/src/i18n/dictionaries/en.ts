@@ -20,6 +20,8 @@ export const en = {
     placeholder: "Ask something about the accessible documents...",
     send: "Send",
     sources: "Sources",
+    thinking: "Thinking…",
+    error: "Something went wrong while answering. Please try again.",
   },
   documents: {
     title: "Documents",

@@ -20,6 +20,8 @@ export type Dictionary = {
     placeholder: string;
     send: string;
     sources: string;
+    thinking: string;
+    error: string;
   };
   documents: {
     title: string;

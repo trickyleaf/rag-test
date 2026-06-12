@@ -41,6 +41,13 @@ export function ChatPanel({ dictionary }: ChatPanelProps) {
   const { messages, sendMessage, status, error } = useChat();
 
   const isLoading = status === "streaming" || status === "submitted";
+  const lastMessage = messages[messages.length - 1];
+  const lastAssistantText =
+    lastMessage?.role === "assistant"
+      ? (lastMessage.parts?.filter(isTextUIPart).map((p) => p.text).join("") ?? "")
+      : "";
+  // Show the "thinking" bubble until the assistant starts producing text.
+  const showThinking = isLoading && lastAssistantText.length === 0;
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -90,15 +97,28 @@ export function ChatPanel({ dictionary }: ChatPanelProps) {
               </MessageBubble>
             );
           })}
-          {isLoading && (
+          {showThinking && (
             <MessageBubble role="assistant" sources={[]}>
-              <span className="animate-pulse">…</span>
+              <span
+                aria-live="polite"
+                className="flex items-center gap-2 text-muted-foreground"
+              >
+                <span className="flex gap-1" aria-hidden>
+                  <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.3s]" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.15s]" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-current" />
+                </span>
+                {dictionary.chat.thinking}
+              </span>
             </MessageBubble>
           )}
-          {error && (
-            <p className="text-center text-sm text-destructive">
-              {error.message ?? "Chat unavailable. Check AI_GATEWAY_API_KEY."}
-            </p>
+          {error && !isLoading && (
+            <div
+              role="alert"
+              className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-center text-sm text-destructive"
+            >
+              {dictionary.chat.error}
+            </div>
           )}
         </div>
       </ScrollArea>

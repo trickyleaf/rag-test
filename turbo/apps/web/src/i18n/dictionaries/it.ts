@@ -21,6 +21,8 @@ export const it = {
     placeholder: "Chiedi qualcosa sui documenti accessibili...",
     send: "Invia",
     sources: "Fonti",
+    thinking: "Sto pensando…",
+    error: "Si è verificato un errore durante la risposta. Riprova.",
   },
   documents: {
     title: "Documenti",

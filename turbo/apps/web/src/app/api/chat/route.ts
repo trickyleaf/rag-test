@@ -30,6 +30,17 @@ type Reference = {
 };
 
 export async function POST(request: Request) {
+  try {
+    return await handleChat(request);
+  } catch (err) {
+    console.error("[chat] Unhandled error:", err);
+    return new Response("Something went wrong while processing your question. Please try again.", {
+      status: 500,
+    });
+  }
+}
+
+async function handleChat(request: Request): Promise<Response> {
   const { user, role } = await getCurrentUser();
   const payload = chatRequestSchema.parse(await request.json());
   const uiMessages = payload.messages as unknown as UIMessage[];
@@ -136,8 +147,10 @@ export async function POST(request: Request) {
       writer.merge(result.toUIMessageStream());
     },
     onError: (error) => {
+      // Never forward raw error messages to the client: they can contain
+      // internal details (URLs, header values, credentials).
       console.error("[chat] Stream error:", error);
-      return error instanceof Error ? error.message : "An error occurred. Please try again.";
+      return "The assistant hit an error while answering. Please try again.";
     },
   });
 
