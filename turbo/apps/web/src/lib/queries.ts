@@ -64,6 +64,25 @@ const DEMO_DOCUMENTS: AppDocument[] = [
   },
 ];
 
+function upsertDemoDocument(document: AppDocument) {
+  const index = DEMO_DOCUMENTS.findIndex((d) => d.id === document.id);
+  if (index >= 0) {
+    DEMO_DOCUMENTS[index] = document;
+    return;
+  }
+  DEMO_DOCUMENTS.unshift(document);
+}
+
+function updateDemoDocumentStatus(
+  documentId: string,
+  status: "uploaded" | "processing" | "ready" | "failed",
+) {
+  const existing = DEMO_DOCUMENTS.find((d) => d.id === documentId);
+  if (!existing) return;
+  existing.status = status;
+  existing.updatedAt = new Date().toISOString().slice(0, 10);
+}
+
 function fallbackRole(r: (typeof demoRoles)[number]): AppRole {
   return {
     id: r.name.toLowerCase(),
@@ -269,32 +288,59 @@ export async function saveDocument(data: {
   tagKeys: string[];
 }): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) {
+    upsertDemoDocument({
+      id: data.id,
+      title: data.title,
+      originalFilename: data.originalFilename,
+      mimeType: data.mimeType,
+      sizeBytes: data.sizeBytes,
+      status: "uploaded",
+      tagKeys: data.tagKeys,
+      uploadedByUserId: data.uploadedByUserId,
+      updatedAt: new Date().toISOString().slice(0, 10),
+    });
+    return;
+  }
 
-  await db.insert(documents).values({
-    id: data.id,
-    title: data.title,
-    originalFilename: data.originalFilename,
-    mimeType: data.mimeType,
-    sizeBytes: data.sizeBytes,
-    storageProvider: data.storageProvider,
-    storageKey: data.storageKey,
-    uploadedByUserId: data.uploadedByUserId,
-    status: "uploaded",
-  });
+  try {
+    await db.insert(documents).values({
+      id: data.id,
+      title: data.title,
+      originalFilename: data.originalFilename,
+      mimeType: data.mimeType,
+      sizeBytes: data.sizeBytes,
+      storageProvider: data.storageProvider,
+      storageKey: data.storageKey,
+      uploadedByUserId: data.uploadedByUserId,
+      status: "uploaded",
+    });
 
-  if (data.tagKeys.length > 0) {
-    const matchedTags = await db
-      .select({ id: tags.id })
-      .from(tags)
-      .where(inArray(tags.key, data.tagKeys));
+    if (data.tagKeys.length > 0) {
+      const matchedTags = await db
+        .select({ id: tags.id })
+        .from(tags)
+        .where(inArray(tags.key, data.tagKeys));
 
-    if (matchedTags.length > 0) {
-      await db
-        .insert(documentTags)
-        .values(matchedTags.map((t) => ({ documentId: data.id, tagId: t.id })))
-        .onConflictDoNothing();
+      if (matchedTags.length > 0) {
+        await db
+          .insert(documentTags)
+          .values(matchedTags.map((t) => ({ documentId: data.id, tagId: t.id })))
+          .onConflictDoNothing();
+      }
     }
+  } catch {
+    upsertDemoDocument({
+      id: data.id,
+      title: data.title,
+      originalFilename: data.originalFilename,
+      mimeType: data.mimeType,
+      sizeBytes: data.sizeBytes,
+      status: "uploaded",
+      tagKeys: data.tagKeys,
+      uploadedByUserId: data.uploadedByUserId,
+      updatedAt: new Date().toISOString().slice(0, 10),
+    });
   }
 }
 
@@ -304,16 +350,23 @@ export async function updateDocumentStatus(
   errorMessage?: string,
 ): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) {
+    updateDemoDocumentStatus(documentId, status);
+    return;
+  }
 
-  await db
-    .update(documents)
-    .set({
-      status,
-      errorMessage: errorMessage ?? null,
-      updatedAt: new Date(),
-    })
-    .where(eq(documents.id, documentId));
+  try {
+    await db
+      .update(documents)
+      .set({
+        status,
+        errorMessage: errorMessage ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(documents.id, documentId));
+  } catch {
+    updateDemoDocumentStatus(documentId, status);
+  }
 }
 
 export async function saveDocumentChunks(
@@ -329,14 +382,18 @@ export async function saveDocumentChunks(
   const db = getDb();
   if (!db) return;
 
-  await db.insert(documentChunks).values(
-    chunks.map((c) => ({
-      id: c.id,
-      documentId,
-      chunkIndex: c.chunkIndex,
-      content: c.content,
-      qdrantPointId: c.qdrantPointId,
-      metadataJson: c.pageNumber !== undefined ? { pageNumber: c.pageNumber } : {},
-    })),
-  );
+  try {
+    await db.insert(documentChunks).values(
+      chunks.map((c) => ({
+        id: c.id,
+        documentId,
+        chunkIndex: c.chunkIndex,
+        content: c.content,
+        qdrantPointId: c.qdrantPointId,
+        metadataJson: c.pageNumber !== undefined ? { pageNumber: c.pageNumber } : {},
+      })),
+    );
+  } catch {
+    // Ignore in demo fallback mode.
+  }
 }
