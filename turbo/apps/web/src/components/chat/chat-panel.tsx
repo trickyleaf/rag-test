@@ -1,8 +1,9 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import { isTextUIPart } from "ai";
 import { SendHorizontal } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,38 +18,33 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import type { Dictionary } from "@/i18n/types";
 
-type Reference = {
-  documentId: string;
-  chunkId: string;
-  title: string;
-  quote: string;
-  score: number;
-  pageNumber?: number;
-};
-
 type ChatPanelProps = {
   dictionary: Dictionary;
 };
 
 export function ChatPanel({ dictionary }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { messages, input, handleInputChange, handleSubmit, isLoading, error, data } =
-    useChat({ api: "/api/chat" });
+  const [input, setInput] = useState("");
 
-  const references: Reference[] = (data ?? [])
-    .slice()
-    .reverse()
-    .flatMap((d) => {
-      const item = d as { references?: Reference[] };
-      return item.references ?? [];
-    })
-    .slice(0, 8);
+  const { messages, sendMessage, status, error } = useChat();
+
+  const isLoading = status === "streaming" || status === "submitted";
+
+  const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
+  const sources =
+    lastAssistantMsg?.parts?.filter((p) => p.type === "source-url") ?? [];
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e as unknown as React.FormEvent);
+      submit();
     }
+  }
+
+  function submit() {
+    if (!input.trim() || isLoading) return;
+    void sendMessage({ text: input });
+    setInput("");
   }
 
   return (
@@ -66,11 +62,17 @@ export function ChatPanel({ dictionary }: ChatPanelProps) {
                 {dictionary.chat.empty}
               </p>
             )}
-            {messages.map((message) => (
-              <MessageBubble key={message.id} role={message.role as "user" | "assistant"}>
-                {message.content}
-              </MessageBubble>
-            ))}
+            {messages.map((message) => {
+              const text = message.parts
+                ?.filter(isTextUIPart)
+                .map((p) => p.text)
+                .join("") ?? "";
+              return (
+                <MessageBubble key={message.id} role={message.role as "user" | "assistant"}>
+                  {text}
+                </MessageBubble>
+              );
+            })}
             {isLoading && (
               <MessageBubble role="assistant">
                 <span className="animate-pulse">…</span>
@@ -87,12 +89,12 @@ export function ChatPanel({ dictionary }: ChatPanelProps) {
         <div className="border-t bg-background/95 p-6">
           <form
             className="mx-auto flex max-w-3xl gap-3"
-            onSubmit={handleSubmit}
+            onSubmit={(e) => { e.preventDefault(); submit(); }}
           >
             <Textarea
               className="min-h-14 resize-none"
               disabled={isLoading}
-              onChange={handleInputChange}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={dictionary.chat.placeholder}
               value={input}
@@ -110,29 +112,21 @@ export function ChatPanel({ dictionary }: ChatPanelProps) {
           <CardHeader>
             <CardTitle>{dictionary.chat.sources}</CardTitle>
             <CardDescription>
-              {references.length > 0
-                ? `${references.length} source${references.length > 1 ? "s" : ""} retrieved`
+              {sources.length > 0
+                ? `${sources.length} source${sources.length > 1 ? "s" : ""} retrieved`
                 : "References appear here after retrieval."}
             </CardDescription>
           </CardHeader>
-          {references.length > 0 && (
+          {sources.length > 0 && (
             <CardContent className="space-y-3">
-              {references.map((ref) => (
-                <div className="rounded-lg border p-3" key={ref.chunkId}>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium truncate">{ref.title}</p>
-                    {ref.pageNumber && (
-                      <Badge variant="secondary">p.{ref.pageNumber}</Badge>
-                    )}
+              {sources.map((part, i) => {
+                if (part.type !== "source-url") return null;
+                return (
+                  <div className="rounded-lg border p-3" key={part.sourceId ?? i}>
+                    <p className="text-sm font-medium truncate">{part.title ?? part.sourceId}</p>
                   </div>
-                  <p className="text-xs leading-5 text-muted-foreground line-clamp-3">
-                    {`"${ref.quote}"`}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground/60">
-                    score: {ref.score.toFixed(3)}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           )}
         </Card>

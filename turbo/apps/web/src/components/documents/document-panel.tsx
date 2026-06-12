@@ -16,29 +16,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Dictionary } from "@/i18n/types";
-import { demoTags, type DemoDocument } from "@/lib/demo-data";
+import type { AppDocument, AppTag } from "@/lib/types";
 
 type DocumentPanelProps = {
   dictionary: Dictionary;
-  documents: DemoDocument[];
+  documents: AppDocument[];
+  tags: AppTag[];
 };
 
-type UploadedDocument = {
-  id: string;
-  title: string;
-  filename: string;
-  status: DemoDocument["status"];
-  tagKeys: string[];
-  uploadedByUserId: string;
-  updatedAt: string;
-};
-
-export function DocumentPanel({ dictionary, documents }: DocumentPanelProps) {
+export function DocumentPanel({ dictionary, documents, tags }: DocumentPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>(["any"]);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadedDocs, setUploadedDocs] = useState<UploadedDocument[]>([]);
+  const [uploadedDocs, setUploadedDocs] = useState<AppDocument[]>([]);
   const [search, setSearch] = useState("");
 
   const allDocuments = [...uploadedDocs, ...documents];
@@ -46,7 +37,7 @@ export function DocumentPanel({ dictionary, documents }: DocumentPanelProps) {
     (d) =>
       !search ||
       d.title.toLowerCase().includes(search.toLowerCase()) ||
-      d.filename.toLowerCase().includes(search.toLowerCase()),
+      d.originalFilename.toLowerCase().includes(search.toLowerCase()),
   );
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -83,14 +74,8 @@ export function DocumentPanel({ dictionary, documents }: DocumentPanelProps) {
         throw new Error(body.error ?? "Upload failed");
       }
 
-      const body = (await response.json()) as { document: UploadedDocument };
-      setUploadedDocs((prev) => [
-        {
-          ...body.document,
-          updatedAt: new Date().toISOString().slice(0, 10),
-        },
-        ...prev,
-      ]);
+      const body = (await response.json()) as { document: AppDocument };
+      setUploadedDocs((prev) => [body.document, ...prev]);
       toast.success(`"${body.document.title}" uploaded — ingestion started.`);
       setPendingFile(null);
       setSelectedTags(["any"]);
@@ -107,9 +92,7 @@ export function DocumentPanel({ dictionary, documents }: DocumentPanelProps) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold">{dictionary.documents.title}</h2>
-          <p className="text-sm text-muted-foreground">
-            {dictionary.documents.description}
-          </p>
+          <p className="text-sm text-muted-foreground">{dictionary.documents.description}</p>
         </div>
         <Button onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
           <FileUp className="size-4" />
@@ -151,7 +134,7 @@ export function DocumentPanel({ dictionary, documents }: DocumentPanelProps) {
                 {dictionary.documents.tags}
               </Label>
               <div className="flex flex-wrap gap-2">
-                {demoTags.map((tag) => (
+                {tags.map((tag) => (
                   <button
                     key={tag.key}
                     type="button"
@@ -192,7 +175,7 @@ export function DocumentPanel({ dictionary, documents }: DocumentPanelProps) {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <CardTitle className="text-base">{document.title}</CardTitle>
-                  <CardDescription>{document.filename}</CardDescription>
+                  <CardDescription>{document.originalFilename}</CardDescription>
                 </div>
                 <StatusBadge status={document.status} />
               </div>
@@ -217,8 +200,7 @@ export function DocumentPanel({ dictionary, documents }: DocumentPanelProps) {
   );
 }
 
-function StatusBadge({ status }: { status: DemoDocument["status"] }) {
+function StatusBadge({ status }: { status: AppDocument["status"] }) {
   const variant = status === "failed" ? "destructive" : "secondary";
-
   return <Badge variant={variant}>{status}</Badge>;
 }

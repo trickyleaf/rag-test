@@ -32,7 +32,7 @@ export default async function RootLayout({
       lang={locale}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
+      <body className="h-full overflow-hidden">
         {children}
         <Toaster richColors position="bottom-right" />
       </body>

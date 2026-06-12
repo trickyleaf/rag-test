@@ -6,12 +6,16 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
-    "./seed": "./src/seed.ts"
+    "./seed": "./src/seed.ts",
+    "./client": "./src/client.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
     "lint": "eslint src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "latest",
@@ -21,6 +25,9 @@
   "devDependencies": {
     "@repo/config": "workspace:*",
     "@types/node": "latest",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "latest",
+    "tsx": "latest",
     "typescript": "latest"
   }
 }

@@ -1,12 +1,13 @@
 import { Sidebar } from "@/components/app-shell/sidebar";
 import type { Dictionary } from "@/i18n/types";
-import type { DemoRole, DemoUser } from "@/lib/demo-data";
+import type { AppRole, AppUser } from "@/lib/types";
 
 type AppShellProps = {
   children: React.ReactNode;
   dictionary: Dictionary;
-  currentUser: DemoUser;
-  currentRole: DemoRole;
+  currentUser: AppUser;
+  currentRole: AppRole;
+  users: AppUser[];
 };
 
 export function AppShell({
@@ -14,15 +15,17 @@ export function AppShell({
   dictionary,
   currentUser,
   currentRole,
+  users,
 }: AppShellProps) {
   return (
-    <div className="flex min-h-dvh bg-background text-foreground">
+    <div className="flex h-full bg-background text-foreground">
       <Sidebar
         currentRole={currentRole}
         currentUser={currentUser}
         dictionary={dictionary}
+        users={users}
       />
-      <main className="flex min-w-0 flex-1 flex-col">{children}</main>
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
     </div>
   );
 }

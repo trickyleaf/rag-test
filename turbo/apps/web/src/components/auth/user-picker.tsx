@@ -12,19 +12,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Dictionary } from "@/i18n/types";
-import type { DemoUser } from "@/lib/demo-data";
+import type { AppUser } from "@/lib/types";
 
 type UserPickerProps = {
   dictionary: Dictionary;
-  users: DemoUser[];
+  users: AppUser[];
   selectedUserId: string;
 };
 
-export function UserPicker({
-  dictionary,
-  users,
-  selectedUserId,
-}: UserPickerProps) {
+export function UserPicker({ dictionary, users, selectedUserId }: UserPickerProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -32,9 +28,7 @@ export function UserPicker({
     startTransition(async () => {
       await fetch("/api/auth/select-user", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId }),
       });
       router.refresh();
@@ -47,11 +41,7 @@ export function UserPicker({
         {dictionary.auth.chooseUser}
       </p>
       <div className="flex gap-2">
-        <Select
-          defaultValue={selectedUserId}
-          disabled={isPending}
-          onValueChange={handleChange}
-        >
+        <Select defaultValue={selectedUserId} disabled={isPending} onValueChange={handleChange}>
           <SelectTrigger className="h-9">
             <SelectValue />
           </SelectTrigger>

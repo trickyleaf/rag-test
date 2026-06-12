@@ -10,30 +10,23 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Dictionary } from "@/i18n/types";
-import type { DemoRole, DemoTag, DemoUser } from "@/lib/demo-data";
+import type { AppRole, AppTag, AppUser } from "@/lib/types";
 
 type SettingsPanelProps = {
   dictionary: Dictionary;
-  roles: DemoRole[];
-  tags: DemoTag[];
-  users: DemoUser[];
+  roles: AppRole[];
+  tags: AppTag[];
+  users: AppUser[];
 };
 
-export function SettingsPanel({
-  dictionary,
-  roles,
-  tags,
-  users,
-}: SettingsPanelProps) {
+export function SettingsPanel({ dictionary, roles, tags, users }: SettingsPanelProps) {
   return (
     <section className="space-y-4 border-t p-8" id="settings">
       <div className="flex items-center gap-3">
         <ShieldCheck className="size-5" />
         <div>
           <h2 className="text-xl font-semibold">{dictionary.settings.title}</h2>
-          <p className="text-sm text-muted-foreground">
-            {dictionary.settings.description}
-          </p>
+          <p className="text-sm text-muted-foreground">{dictionary.settings.description}</p>
         </div>
       </div>
 
@@ -83,7 +76,7 @@ export function SettingsPanel({
                 <CardDescription>{user.email}</CardDescription>
               </CardHeader>
               <CardContent>
-                <Badge variant="secondary">{user.roleId}</Badge>
+                <Badge variant="secondary">{user.roleName}</Badge>
               </CardContent>
             </Card>
           ))}
@@ -93,13 +86,7 @@ export function SettingsPanel({
   );
 }
 
-function PolicyList({
-  label,
-  values,
-}: {
-  label: string;
-  values: readonly string[];
-}) {
+function PolicyList({ label, values }: { label: string; values: string[] }) {
   return (
     <div>
       <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">

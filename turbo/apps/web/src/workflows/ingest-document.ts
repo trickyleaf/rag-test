@@ -4,6 +4,10 @@ import { embedMany } from "ai";
 import { upload } from "llama-cloud-services/parse";
 
 import { env } from "@/config/env";
+import {
+  saveDocumentChunks,
+  updateDocumentStatus,
+} from "@/lib/queries";
 
 export type IngestDocumentWorkflowInput = {
   documentId: string;
@@ -36,72 +40,98 @@ export async function ingestDocumentWorkflow(input: IngestDocumentWorkflowInput)
     return { documentId: input.documentId, nodeCount: 0 };
   }
 
-  // Step 1: Fetch file from blob storage
-  const fileResponse = await fetch(input.storageKey);
-  if (!fileResponse.ok) {
-    throw new Error(`Failed to fetch document from storage: ${fileResponse.statusText}`);
-  }
-  const contentType = fileResponse.headers.get("content-type") ?? "application/pdf";
-  const filename =
-    fileResponse.headers.get("content-disposition")?.match(/filename="(.+?)"/)?.[1] ??
-    input.storageKey.split("/").pop() ??
-    "document.pdf";
-  const arrayBuffer = await fileResponse.arrayBuffer();
-  const file = new File([arrayBuffer], filename, { type: contentType });
+  await updateDocumentStatus(input.documentId, "processing");
 
-  // Step 2: Parse with LlamaParse cloud
-  const job = await upload({
-    file,
-    apiKey: env.LLAMA_CLOUD_API_KEY,
-    region: "us",
-    page_separator: "\n\n--- page ---\n\n",
-  } as Parameters<typeof upload>[0]);
-  const markdown = await job.markdown();
+  try {
+    // Step 1: Fetch file from blob storage
+    const fileResponse = await fetch(input.storageKey);
+    if (!fileResponse.ok) {
+      throw new Error(`Failed to fetch document from storage: ${fileResponse.statusText}`);
+    }
+    const contentType = fileResponse.headers.get("content-type") ?? "application/pdf";
+    const filename =
+      fileResponse.headers.get("content-disposition")?.match(/filename="(.+?)"/)?.[1] ??
+      input.storageKey.split("/").pop() ??
+      "document.pdf";
+    const arrayBuffer = await fileResponse.arrayBuffer();
+    const file = new File([arrayBuffer], filename, { type: contentType });
 
-  const nodes: ParsedNode[] = markdown
-    .split("\n\n--- page ---\n\n")
-    .map((content, index) => ({
-      id: crypto.randomUUID(),
-      content: content.trim(),
-      pageNumber: index + 1,
-    }))
-    .filter((node) => node.content.length > 0);
+    // Step 2: Parse with LlamaParse cloud
+    const job = await upload({
+      file,
+      apiKey: env.LLAMA_CLOUD_API_KEY,
+      region: "us",
+      page_separator: "\n\n--- page ---\n\n",
+    } as Parameters<typeof upload>[0]);
+    const markdown = await job.markdown();
 
-  if (nodes.length === 0) {
-    console.warn(`[ingest] No content extracted for ${input.documentId}`);
-    return { documentId: input.documentId, nodeCount: 0 };
-  }
+    const nodes: ParsedNode[] = markdown
+      .split("\n\n--- page ---\n\n")
+      .map((content, index) => ({
+        id: crypto.randomUUID(),
+        content: content.trim(),
+        pageNumber: index + 1,
+      }))
+      .filter((node) => node.content.length > 0);
 
-  // Step 3: Embed all chunks
-  const { embeddings } = await embedMany({
-    model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
-    values: nodes.map((n) => n.content),
-  });
+    if (nodes.length === 0) {
+      console.warn(`[ingest] No content extracted for ${input.documentId}`);
+      await updateDocumentStatus(input.documentId, "ready");
+      return { documentId: input.documentId, nodeCount: 0 };
+    }
 
-  // Step 4: Upsert into Qdrant
-  const qdrant = new QdrantClient({
-    url: env.QDRANT_URL,
-    apiKey: env.QDRANT_API_KEY,
-  });
+    // Step 3: Embed all chunks
+    const { embeddings } = await embedMany({
+      model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
+      values: nodes.map((n) => n.content),
+    });
 
-  await ensureQdrantCollection(qdrant, env.QDRANT_COLLECTION);
+    // Step 4: Upsert into Qdrant
+    const qdrant = new QdrantClient({
+      url: env.QDRANT_URL,
+      apiKey: env.QDRANT_API_KEY,
+    });
 
-  await qdrant.upsert(env.QDRANT_COLLECTION, {
-    wait: true,
-    points: nodes.map((node, index) => ({
-      id: node.id,
-      vector: embeddings[index] ?? [],
-      payload: {
-        documentId: input.documentId,
-        chunkId: node.id,
-        tagKeys: input.tagKeys,
+    await ensureQdrantCollection(qdrant, env.QDRANT_COLLECTION);
+
+    await qdrant.upsert(env.QDRANT_COLLECTION, {
+      wait: true,
+      points: nodes.map((node, index) => ({
+        id: node.id,
+        vector: embeddings[index] ?? [],
+        payload: {
+          documentId: input.documentId,
+          chunkId: node.id,
+          tagKeys: input.tagKeys,
+          chunkIndex: index,
+          content: node.content,
+          pageNumber: node.pageNumber,
+        },
+      })),
+    });
+
+    // Step 5: Persist chunks to DB
+    await saveDocumentChunks(
+      input.documentId,
+      nodes.map((node, index) => ({
+        id: node.id,
         chunkIndex: index,
         content: node.content,
+        qdrantPointId: node.id,
         pageNumber: node.pageNumber,
-      },
-    })),
-  });
+      })),
+    );
 
-  console.log(`[ingest] ${input.documentId}: indexed ${nodes.length} nodes`);
-  return { documentId: input.documentId, nodeCount: nodes.length };
+    await updateDocumentStatus(input.documentId, "ready");
+
+    console.log(`[ingest] ${input.documentId}: indexed ${nodes.length} nodes`);
+    return { documentId: input.documentId, nodeCount: nodes.length };
+  } catch (err) {
+    await updateDocumentStatus(
+      input.documentId,
+      "failed",
+      err instanceof Error ? err.message : String(err),
+    );
+    throw err;
+  }
 }

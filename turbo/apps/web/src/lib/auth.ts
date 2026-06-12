@@ -1,16 +1,17 @@
 import { cookies } from "next/headers";
 
-import { getDemoRole, getDemoUser } from "./demo-data";
+import { getDefaultUserAndRole, getUserById } from "./queries";
 
 export const mockUserCookieName = "mock-user-id";
 
 export async function getCurrentUser() {
   const cookieStore = await cookies();
-  const user = getDemoUser(cookieStore.get(mockUserCookieName)?.value);
-  const role = getDemoRole(user.roleId);
+  const userId = cookieStore.get(mockUserCookieName)?.value;
 
-  return {
-    user,
-    role,
-  };
+  if (userId) {
+    const result = await getUserById(userId);
+    if (result) return result;
+  }
+
+  return getDefaultUserAndRole();
 }

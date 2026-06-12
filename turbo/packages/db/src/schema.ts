@@ -4,6 +4,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -49,23 +50,31 @@ export const tags = pgTable("tags", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const roleAllowedTags = pgTable("role_allowed_tags", {
-  roleId: uuid("role_id")
-    .notNull()
-    .references(() => roles.id),
-  tagId: uuid("tag_id")
-    .notNull()
-    .references(() => tags.id),
-});
+export const roleAllowedTags = pgTable(
+  "role_allowed_tags",
+  {
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id),
+  },
+  (t) => [primaryKey({ columns: [t.roleId, t.tagId] })],
+);
 
-export const roleDeniedTags = pgTable("role_denied_tags", {
-  roleId: uuid("role_id")
-    .notNull()
-    .references(() => roles.id),
-  tagId: uuid("tag_id")
-    .notNull()
-    .references(() => tags.id),
-});
+export const roleDeniedTags = pgTable(
+  "role_denied_tags",
+  {
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id),
+  },
+  (t) => [primaryKey({ columns: [t.roleId, t.tagId] })],
+);
 
 export const documents = pgTable("documents", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -84,14 +93,18 @@ export const documents = pgTable("documents", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const documentTags = pgTable("document_tags", {
-  documentId: uuid("document_id")
-    .notNull()
-    .references(() => documents.id),
-  tagId: uuid("tag_id")
-    .notNull()
-    .references(() => tags.id),
-});
+export const documentTags = pgTable(
+  "document_tags",
+  {
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id),
+  },
+  (t) => [primaryKey({ columns: [t.documentId, t.tagId] })],
+);
 
 export const documentChunks = pgTable("document_chunks", {
   id: uuid("id").defaultRandom().primaryKey(),

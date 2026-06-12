@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { demoRoles, demoTags, demoUsers } from "@/lib/demo-data";
+import { getAllRoles, getAllTags, getAllUsers } from "@/lib/queries";
 
 export async function GET() {
   const { role } = await getCurrentUser();
@@ -10,9 +10,11 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  return NextResponse.json({
-    roles: demoRoles,
-    tags: demoTags,
-    users: demoUsers,
-  });
+  const [roles, tags, users] = await Promise.all([
+    getAllRoles(),
+    getAllTags(),
+    getAllUsers(),
+  ]);
+
+  return NextResponse.json({ roles, tags, users });
 }

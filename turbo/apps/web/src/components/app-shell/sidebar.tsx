@@ -1,28 +1,30 @@
+"use client";
+
 import { Bot, FileText, Settings } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { UserPicker } from "@/components/auth/user-picker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { Dictionary } from "@/i18n/types";
-import type { DemoRole, DemoUser } from "@/lib/demo-data";
-import { demoUsers } from "@/lib/demo-data";
+import type { AppRole, AppUser } from "@/lib/types";
 
 type SidebarProps = {
   dictionary: Dictionary;
-  currentUser: DemoUser;
-  currentRole: DemoRole;
+  currentUser: AppUser;
+  currentRole: AppRole;
+  users: AppUser[];
 };
 
-export function Sidebar({
-  dictionary,
-  currentUser,
-  currentRole,
-}: SidebarProps) {
+export function Sidebar({ dictionary, currentUser, currentRole, users }: SidebarProps) {
+  const pathname = usePathname();
+
   const items = [
-    { label: dictionary.nav.chat, icon: Bot },
-    { label: dictionary.nav.documents, icon: FileText },
-    { label: dictionary.nav.settings, icon: Settings, adminOnly: true },
+    { label: dictionary.nav.chat, icon: Bot, href: "/" },
+    { label: dictionary.nav.documents, icon: FileText, href: "/documents" },
+    { label: dictionary.nav.settings, icon: Settings, href: "/settings", adminOnly: true },
   ];
 
   return (
@@ -39,26 +41,27 @@ export function Sidebar({
           .filter((item) => !item.adminOnly || currentRole.policy.isAdmin)
           .map((item) => {
             const Icon = item.icon;
-
+            const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             return (
-              <a
-                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                href={`#${item.label.toLowerCase()}`}
-                key={item.label}
+              <Link
+                className={[
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                ].join(" ")}
+                href={item.href}
+                key={item.href}
               >
                 <Icon className="size-4" />
                 {item.label}
-              </a>
+              </Link>
             );
           })}
       </nav>
 
       <div className="mt-auto space-y-4">
-        <UserPicker
-          dictionary={dictionary}
-          selectedUserId={currentUser.id}
-          users={demoUsers}
-        />
+        <UserPicker dictionary={dictionary} selectedUserId={currentUser.id} users={users} />
 
         <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
           <Avatar>
@@ -71,9 +74,7 @@ export function Sidebar({
           </Avatar>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{currentUser.name}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {currentUser.email}
-            </p>
+            <p className="truncate text-xs text-muted-foreground">{currentUser.email}</p>
           </div>
           <Badge variant={currentRole.policy.isAdmin ? "default" : "secondary"}>
             {currentRole.name}

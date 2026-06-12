@@ -4,13 +4,13 @@ import { NextResponse } from "next/server";
 import { env } from "@/config/env";
 import { resolveUploadTagKeys } from "@/lib/acl";
 import { getCurrentUser } from "@/lib/auth";
-import { getAccessibleDocuments } from "@/lib/demo-data";
+import { getDocumentsForRole, saveDocument } from "@/lib/queries";
 import { ingestDocumentWorkflow } from "@/workflows/ingest-document";
 
 export async function GET() {
-  const { user } = await getCurrentUser();
-
-  return NextResponse.json({ documents: getAccessibleDocuments(user) });
+  const { role } = await getCurrentUser();
+  const docs = await getDocumentsForRole(role);
+  return NextResponse.json({ documents: docs });
 }
 
 export async function POST(request: Request) {
@@ -23,13 +23,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A non-empty file is required." }, { status: 400 });
   }
 
-  if (!env.BLOB_READ_WRITE_TOKEN) {
-    return NextResponse.json(
-      { error: "Document uploads require BLOB_READ_WRITE_TOKEN to be configured." },
-      { status: 503 },
-    );
-  }
-
   const rawTagKeys = formData.getAll("tagKeys").map(String);
   const tagKeys = resolveUploadTagKeys(rawTagKeys);
   const title = String(formData.get("title") || file.name);
@@ -40,7 +33,18 @@ export async function POST(request: Request) {
     token: env.BLOB_READ_WRITE_TOKEN,
   });
 
-  // Kick off ingestion without blocking the response
+  await saveDocument({
+    id: documentId,
+    title,
+    originalFilename: file.name,
+    mimeType: file.type || "application/octet-stream",
+    sizeBytes: file.size,
+    storageProvider: "vercel-blob",
+    storageKey: blob.url,
+    uploadedByUserId: user.id,
+    tagKeys,
+  });
+
   void ingestDocumentWorkflow({
     documentId,
     storageKey: blob.url,
@@ -54,11 +58,13 @@ export async function POST(request: Request) {
       document: {
         id: documentId,
         title,
-        filename: file.name,
-        mimeType: file.type,
+        originalFilename: file.name,
+        mimeType: file.type || "application/octet-stream",
+        sizeBytes: file.size,
         status: "uploaded",
         tagKeys,
         uploadedByUserId: user.id,
+        updatedAt: new Date().toISOString().slice(0, 10),
       },
     },
     { status: 202 },
