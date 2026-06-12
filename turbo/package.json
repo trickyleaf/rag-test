@@ -1,0 +1,31 @@
+{
+  "name": "rag-test",
+  "version": "1.0.0",
+  "description": "ChatGPT-like RAG workspace with Next.js, LlamaParse, Qdrant, and tag-based ACL.",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\""
+  },
+  "keywords": [
+    "rag",
+    "nextjs",
+    "llamaindex",
+    "qdrant",
+    "turborepo"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.33.3",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.1",
+    "prettier": "latest",
+    "turbo": "latest",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0"
+  }
+}
