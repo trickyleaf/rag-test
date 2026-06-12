@@ -1,11 +1,10 @@
 import { gateway } from "@ai-sdk/gateway";
 import { get as getBlobObject } from "@vercel/blob";
-import { QdrantClient } from "@qdrant/js-client-rest";
 import { embedMany } from "ai";
 import { FatalError } from "workflow";
-import { upload } from "llama-cloud-services/parse";
 
 import { env } from "@/config/env";
+import { createQdrantClient } from "@/lib/qdrant";
 import {
   saveDocumentChunks,
   updateDocumentStatus,
@@ -15,6 +14,7 @@ export type IngestDocumentWorkflowInput = {
   documentId: string;
   storageKey: string;
   tagKeys: string[];
+  title: string;
 };
 
 type ParsedNode = {
@@ -25,6 +25,15 @@ type ParsedNode = {
 
 // ---------- steps ----------
 
+async function setDocumentStatus(
+  documentId: string,
+  status: "uploaded" | "processing" | "ready" | "failed",
+  errorMessage?: string,
+): Promise<void> {
+  "use step";
+  await updateDocumentStatus(documentId, status, errorMessage);
+}
+
 async function fetchFile(storageKey: string): Promise<{ arrayBuffer: ArrayBuffer; contentType: string; filename: string }> {
   "use step";
   const result = await getBlobObject(storageKey, {
@@ -34,14 +43,14 @@ async function fetchFile(storageKey: string): Promise<{ arrayBuffer: ArrayBuffer
   if (!result || result.statusCode !== 200) {
     throw new FatalError(`Failed to fetch document from storage: not found or access denied`);
   }
-  const chunks: ArrayBuffer[] = [];
+  const chunks: Uint8Array[] = [];
   const reader = result.stream.getReader();
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    chunks.push(value.buffer as ArrayBuffer);
+    chunks.push(value);
   }
-  const arrayBuffer = await new Blob(chunks).arrayBuffer();
+  const arrayBuffer = await new Blob(chunks as BlobPart[]).arrayBuffer();
   const contentType = result.blob.contentType ?? "application/pdf";
   const filename =
     result.blob.contentDisposition?.match(/filename="(.+?)"/)?.[1] ??
@@ -50,6 +59,11 @@ async function fetchFile(storageKey: string): Promise<{ arrayBuffer: ArrayBuffer
   return { arrayBuffer, contentType, filename };
 }
 
+const LLAMA_PARSE_BASE_URL = "https://api.cloud.llamaindex.ai";
+const LLAMA_PARSE_PAGE_SEPARATOR = "\n\n--- page ---\n\n";
+const LLAMA_PARSE_POLL_INTERVAL_MS = 3_000;
+const LLAMA_PARSE_POLL_TIMEOUT_MS = 5 * 60_000;
+
 async function parseWithLlamaParse(
   arrayBuffer: ArrayBuffer,
   contentType: string,
@@ -57,17 +71,59 @@ async function parseWithLlamaParse(
   documentId: string,
 ): Promise<ParsedNode[]> {
   "use step";
-  const file = new File([arrayBuffer], filename, { type: contentType });
-  const job = await upload({
-    file,
-    apiKey: env.LLAMA_CLOUD_API_KEY!,
-    region: "us",
-    page_separator: "\n\n--- page ---\n\n",
-  } as Parameters<typeof upload>[0]);
-  const markdown = await job.markdown();
+  const headers = { Authorization: `Bearer ${env.LLAMA_CLOUD_API_KEY}` };
+
+  const form = new FormData();
+  form.append("file", new File([arrayBuffer], filename, { type: contentType }));
+  form.append("page_separator", LLAMA_PARSE_PAGE_SEPARATOR);
+
+  const uploadRes = await fetch(`${LLAMA_PARSE_BASE_URL}/api/v1/parsing/upload`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  if (!uploadRes.ok) {
+    const body = await uploadRes.text().catch(() => "");
+    throw new FatalError(
+      `LlamaParse upload failed (${uploadRes.status}): ${body.slice(0, 500)}`,
+    );
+  }
+  const { id: jobId, status: initialStatus } = (await uploadRes.json()) as {
+    id: string;
+    status: string;
+  };
+
+  let status = initialStatus;
+  const deadline = Date.now() + LLAMA_PARSE_POLL_TIMEOUT_MS;
+  while (status !== "SUCCESS") {
+    if (status === "ERROR" || status === "CANCELLED") {
+      throw new FatalError(`LlamaParse job ${jobId} ended with status ${status}`);
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`LlamaParse job ${jobId} timed out (last status: ${status})`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, LLAMA_PARSE_POLL_INTERVAL_MS));
+    const jobRes = await fetch(`${LLAMA_PARSE_BASE_URL}/api/v1/parsing/job/${jobId}`, { headers });
+    if (!jobRes.ok) {
+      throw new Error(`LlamaParse job status check failed (${jobRes.status})`);
+    }
+    status = ((await jobRes.json()) as { status: string }).status;
+  }
+
+  const resultRes = await fetch(
+    `${LLAMA_PARSE_BASE_URL}/api/v1/parsing/job/${jobId}/result/markdown`,
+    { headers },
+  );
+  if (!resultRes.ok) {
+    const body = await resultRes.text().catch(() => "");
+    throw new Error(
+      `LlamaParse markdown result fetch failed (${resultRes.status}): ${body.slice(0, 500)}`,
+    );
+  }
+  const { markdown } = (await resultRes.json()) as { markdown: string };
 
   const nodes = markdown
-    .split("\n\n--- page ---\n\n")
+    .split(LLAMA_PARSE_PAGE_SEPARATOR)
     .map((content, index) => ({
       id: crypto.randomUUID(),
       content: content.trim(),
@@ -95,15 +151,15 @@ async function upsertToQdrant(
   embeddings: number[][],
   documentId: string,
   tagKeys: string[],
+  title: string,
 ): Promise<void> {
   "use step";
-  const qdrant = new QdrantClient({ url: env.QDRANT_URL!, apiKey: env.QDRANT_API_KEY });
-  try {
+  const qdrant = createQdrantClient();
+  const { exists } = await qdrant.collectionExists(env.QDRANT_COLLECTION);
+  if (!exists) {
     await qdrant.createCollection(env.QDRANT_COLLECTION, {
       vectors: { size: 1536, distance: "Cosine" },
     });
-  } catch {
-    // Collection already exists — safe to continue
   }
   await qdrant.upsert(env.QDRANT_COLLECTION, {
     wait: true,
@@ -114,6 +170,7 @@ async function upsertToQdrant(
         documentId,
         chunkId: node.id,
         tagKeys,
+        title,
         chunkIndex: index,
         content: node.content,
         pageNumber: node.pageNumber,
@@ -149,7 +206,7 @@ export async function ingestDocumentWorkflow(input: IngestDocumentWorkflowInput)
     return { documentId: input.documentId, nodeCount: 0 };
   }
 
-  await updateDocumentStatus(input.documentId, "processing");
+  await setDocumentStatus(input.documentId, "processing");
 
   try {
     const { arrayBuffer, contentType, filename } = await fetchFile(input.storageKey);
@@ -157,22 +214,22 @@ export async function ingestDocumentWorkflow(input: IngestDocumentWorkflowInput)
     const nodes = await parseWithLlamaParse(arrayBuffer, contentType, filename, input.documentId);
 
     if (nodes.length === 0) {
-      await updateDocumentStatus(input.documentId, "ready");
+      await setDocumentStatus(input.documentId, "ready");
       return { documentId: input.documentId, nodeCount: 0 };
     }
 
     const embeddings = await embedNodes(nodes);
 
-    await upsertToQdrant(nodes, embeddings, input.documentId, input.tagKeys);
+    await upsertToQdrant(nodes, embeddings, input.documentId, input.tagKeys, input.title);
 
     await persistChunks(input.documentId, nodes);
 
-    await updateDocumentStatus(input.documentId, "ready");
+    await setDocumentStatus(input.documentId, "ready");
 
     console.log(`[ingest] ${input.documentId}: indexed ${nodes.length} nodes`);
     return { documentId: input.documentId, nodeCount: nodes.length };
   } catch (err) {
-    await updateDocumentStatus(
+    await setDocumentStatus(
       input.documentId,
       "failed",
       err instanceof Error ? err.message : String(err),

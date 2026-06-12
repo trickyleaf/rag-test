@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       tagKeys,
     });
 
-    await start(ingestDocumentWorkflow, [{ documentId, storageKey: blob.url, tagKeys }]);
+    await start(ingestDocumentWorkflow, [{ documentId, storageKey: blob.url, tagKeys, title }]);
 
     return NextResponse.json(
       {

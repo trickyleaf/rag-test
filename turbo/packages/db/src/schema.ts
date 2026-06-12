@@ -106,6 +106,17 @@ export const documentTags = pgTable(
   (t) => [primaryKey({ columns: [t.documentId, t.tagId] })],
 );
 
+export const documentStatusEvents = pgTable("document_status_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  documentId: uuid("document_id")
+    .notNull()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  fromStatus: documentStatus("from_status"),
+  toStatus: documentStatus("to_status").notNull(),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const documentChunks = pgTable("document_chunks", {
   id: uuid("id").defaultRandom().primaryKey(),
   documentId: uuid("document_id")

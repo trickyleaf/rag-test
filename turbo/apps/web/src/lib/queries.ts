@@ -1,6 +1,7 @@
-import { eq, inArray } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 import {
   documentChunks,
+  documentStatusEvents,
   documentTags,
   documents,
   roleAllowedTags,
@@ -151,6 +152,12 @@ export async function saveDocument(data: {
     status: "uploaded",
   });
 
+  await db.insert(documentStatusEvents).values({
+    documentId: data.id,
+    fromStatus: null,
+    toStatus: "uploaded",
+  });
+
   if (data.tagKeys.length > 0) {
     const matchedTags = await db
       .select({ id: tags.id })
@@ -172,22 +179,74 @@ export async function updateDocumentStatus(
   errorMessage?: string,
 ): Promise<void> {
   const db = getDb();
-  await db
+  const [previous] = await db
     .update(documents)
     .set({
       status,
       errorMessage: errorMessage ?? null,
       updatedAt: new Date(),
     })
-    .where(eq(documents.id, documentId));
+    .where(eq(documents.id, documentId))
+    .returning({ id: documents.id });
+  if (!previous) return;
+
+  const [lastEvent] = await db
+    .select({ toStatus: documentStatusEvents.toStatus })
+    .from(documentStatusEvents)
+    .where(eq(documentStatusEvents.documentId, documentId))
+    .orderBy(desc(documentStatusEvents.createdAt))
+    .limit(1);
+
+  await db.insert(documentStatusEvents).values({
+    documentId,
+    fromStatus: lastEvent?.toStatus ?? null,
+    toStatus: status,
+    errorMessage: errorMessage ?? null,
+  });
+}
+
+export async function getDocumentStatusHistory(documentId: string): Promise<
+  Array<{
+    fromStatus: string | null;
+    toStatus: string;
+    errorMessage: string | null;
+    createdAt: string;
+  }>
+> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      fromStatus: documentStatusEvents.fromStatus,
+      toStatus: documentStatusEvents.toStatus,
+      errorMessage: documentStatusEvents.errorMessage,
+      createdAt: documentStatusEvents.createdAt,
+    })
+    .from(documentStatusEvents)
+    .where(eq(documentStatusEvents.documentId, documentId))
+    .orderBy(asc(documentStatusEvents.createdAt));
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+}
+
+export async function getDocumentTagKeys(documentId: string): Promise<string[]> {
+  const db = getDb();
+  const rows = await db
+    .select({ tagKey: tags.key })
+    .from(documentTags)
+    .innerJoin(tags, eq(documentTags.tagId, tags.id))
+    .where(eq(documentTags.documentId, documentId));
+  return rows.map((r) => r.tagKey);
 }
 
 export async function getDocumentStorageKey(
   documentId: string,
-): Promise<{ storageKey: string; originalFilename: string } | null> {
+): Promise<{ storageKey: string; originalFilename: string; title: string } | null> {
   const db = getDb();
   const rows = await db
-    .select({ storageKey: documents.storageKey, originalFilename: documents.originalFilename })
+    .select({
+      storageKey: documents.storageKey,
+      originalFilename: documents.originalFilename,
+      title: documents.title,
+    })
     .from(documents)
     .where(eq(documents.id, documentId))
     .limit(1);

@@ -1,5 +1,4 @@
 import { gateway } from "@ai-sdk/gateway";
-import { QdrantClient } from "@qdrant/js-client-rest";
 import {
   convertToModelMessages,
   createUIMessageStream,
@@ -13,6 +12,7 @@ import { z } from "zod";
 import { env } from "@/config/env";
 import { buildQdrantAclFilter } from "@/lib/acl";
 import { getCurrentUser } from "@/lib/auth";
+import { createQdrantClient } from "@/lib/qdrant";
 
 export const runtime = "nodejs";
 
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       value: lastUserText,
     });
 
-    const qdrant = new QdrantClient({ url: env.QDRANT_URL, apiKey: env.QDRANT_API_KEY });
+    const qdrant = createQdrantClient();
     const aclFilter = buildQdrantAclFilter(role.policy);
 
     try {
