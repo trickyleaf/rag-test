@@ -1,6 +1,5 @@
-import { resolveUploadTagKeys } from "@repo/rag";
+import { resolveUploadTagKeys } from "@/lib/acl";
 import { NextResponse } from "next/server";
-import { start } from "workflow/api";
 import { z } from "zod";
 
 import { ingestDocumentWorkflow } from "@/workflows/ingest-document";
@@ -29,13 +28,11 @@ export async function POST(request: Request) {
   const documentId = crypto.randomUUID();
   const tagKeys = resolveUploadTagKeys(payload.tagKeys);
 
-  const run = await start(ingestDocumentWorkflow, [
-    {
-      documentId,
-      storageKey: payload.storageKey,
-      tagKeys,
-    },
-  ]);
+  const run = await ingestDocumentWorkflow({
+    documentId,
+    storageKey: payload.storageKey,
+    tagKeys,
+  });
 
   return NextResponse.json(
     {
@@ -48,7 +45,7 @@ export async function POST(request: Request) {
         tagKeys,
         uploadedByUserId: user.id,
       },
-      workflowRunId: run.runId,
+      workflowRunId: run.documentId,
     },
     { status: 202 },
   );
