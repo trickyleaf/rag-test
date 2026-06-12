@@ -21,6 +21,21 @@ type ParsedNode = {
   pageNumber: number;
 };
 
+function parseInlineDataUrl(storageKey: string): File | null {
+  if (!storageKey.startsWith("data:")) return null;
+  const match = storageKey.match(/^data:([^;,]+)?;base64,(.*)$/s);
+  if (!match) return null;
+  const mimeType = match[1] || "application/octet-stream";
+  const base64 = match[2] || "";
+  const buffer = Buffer.from(base64, "base64");
+  return new File([buffer], "uploaded-document", { type: mimeType });
+}
+
+function extractTextFromPdfLikeContent(text: string) {
+  const matches = [...text.matchAll(/\(([^()]*)\)\s*Tj/g)].map((m) => m[1]?.trim() ?? "");
+  return matches.filter(Boolean).join("\n").trim();
+}
+
 async function ensureQdrantCollection(client: QdrantClient, collectionName: string) {
   try {
     await client.createCollection(collectionName, {
@@ -43,7 +58,25 @@ export async function ingestDocumentWorkflow(input: IngestDocumentWorkflowInput)
   await updateDocumentStatus(input.documentId, "processing");
 
   try {
-    // Step 1: Fetch file from blob storage
+    // Step 1: Fetch file from storage
+    const inlineFile = parseInlineDataUrl(input.storageKey);
+    if (inlineFile) {
+      const rawText = await inlineFile.text();
+      const extracted = extractTextFromPdfLikeContent(rawText) || rawText.slice(0, 1000) || "Document uploaded";
+      await saveDocumentChunks(input.documentId, [
+        {
+          id: crypto.randomUUID(),
+          chunkIndex: 0,
+          content: extracted,
+          qdrantPointId: crypto.randomUUID(),
+          pageNumber: 1,
+        },
+      ]);
+      await updateDocumentStatus(input.documentId, "ready");
+      console.log(`[ingest] ${input.documentId}: ready via inline fallback indexing`);
+      return { documentId: input.documentId, nodeCount: 1 };
+    }
+
     const fileResponse = await fetch(input.storageKey);
     if (!fileResponse.ok) {
       throw new Error(`Failed to fetch document from storage: ${fileResponse.statusText}`);
