@@ -139,10 +139,12 @@ async function parseWithLlamaParse(
 
 async function embedNodes(nodes: ParsedNode[]): Promise<number[][]> {
   "use step";
+  console.log(`[ingest] Embedding ${nodes.length} nodes — model: ${env.AI_EMBEDDING_MODEL}`);
   const { embeddings } = await embedMany({
     model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
     values: nodes.map((n) => n.content),
   });
+  console.log(`[ingest] Embedding done — dims: ${embeddings[0]?.length ?? 0}`);
   return embeddings;
 }
 
