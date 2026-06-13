@@ -88,6 +88,11 @@ async function handleChat(request: Request): Promise<Response> {
       });
 
       console.log(`[chat] Qdrant returned ${result.points.length} points — scores: [${result.points.map((p) => p.score?.toFixed(3)).join(", ")}]`);
+      if (result.points.length > 0) {
+        const firstPayload = (result.points[0]?.payload ?? {}) as Record<string, unknown>;
+        console.log(`[chat] First chunk payload keys: [${Object.keys(firstPayload).join(", ")}]`);
+        console.log(`[chat] First chunk content (first 300 chars): ${String(firstPayload.content ?? "").slice(0, 300)}`);
+      }
 
       references = result.points.map((point) => {
         const p = (point.payload ?? {}) as Record<string, unknown>;
@@ -107,6 +112,9 @@ async function handleChat(request: Request): Promise<Response> {
       // not just the 500-char preview used for source citations.
       context = references.map((ref) => `[${ref.title}]\n${ref.content}`).join("\n\n---\n\n");
       console.log(`[chat] Context built — ${references.length} chunks, total chars: ${context.length}`);
+      if (context.length > 0) {
+        console.log(`[chat] Context preview (first 500 chars):\n${context.slice(0, 500)}`);
+      }
     } catch (err) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const qdrantError = (err as any)?.data?.status?.error as string | undefined;
