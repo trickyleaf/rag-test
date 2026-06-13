@@ -163,7 +163,7 @@ async function handleChat(request: Request): Promise<Response> {
         },
         onFinish: ({ usage, finishReason }) => {
           console.log(
-            `[chat] LLM finished — reason: ${finishReason}, tokens: prompt=${usage?.promptTokens ?? "?"} completion=${usage?.completionTokens ?? "?"}`,
+            `[chat] LLM finished — reason: ${finishReason}, tokens: input=${usage?.inputTokens ?? "?"} output=${usage?.outputTokens ?? "?"}`,
           );
         },
       });
