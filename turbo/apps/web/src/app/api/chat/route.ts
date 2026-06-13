@@ -24,6 +24,7 @@ type Reference = {
   documentId: string;
   chunkId: string;
   title: string;
+  content: string;
   quote: string;
   score: number;
   pageNumber?: number;
@@ -53,11 +54,13 @@ async function handleChat(request: Request): Promise<Response> {
 
   if (lastUserText) {
     let embedding: number[];
+    console.log(`[chat] Embedding query — model: ${env.AI_EMBEDDING_MODEL}, text length: ${lastUserText.length}`);
     try {
       ({ embedding } = await embed({
         model: gateway.embeddingModel(env.AI_EMBEDDING_MODEL),
         value: lastUserText,
       }));
+      console.log(`[chat] Embedding done — vector dims: ${embedding.length}`);
     } catch (err) {
       console.error("[chat] Embedding error:", err);
       const isRateLimit =
@@ -72,6 +75,7 @@ async function handleChat(request: Request): Promise<Response> {
 
     const qdrant = createQdrantClient();
     const aclFilter = buildQdrantAclFilter(role.policy);
+    console.log(`[chat] Qdrant query — collection: ${env.QDRANT_COLLECTION}, acl filter: ${JSON.stringify(aclFilter)}, limit: 8`);
 
     try {
       const result = await qdrant.query(env.QDRANT_COLLECTION, {
@@ -83,6 +87,13 @@ async function handleChat(request: Request): Promise<Response> {
         with_vector: false,
       });
 
+      console.log(`[chat] Qdrant returned ${result.points.length} points — scores: [${result.points.map((p) => p.score?.toFixed(3)).join(", ")}]`);
+      if (result.points.length > 0) {
+        const firstPayload = (result.points[0]?.payload ?? {}) as Record<string, unknown>;
+        console.log(`[chat] First chunk payload keys: [${Object.keys(firstPayload).join(", ")}]`);
+        console.log(`[chat] First chunk content (first 300 chars): ${String(firstPayload.content ?? "").slice(0, 300)}`);
+      }
+
       references = result.points.map((point) => {
         const p = (point.payload ?? {}) as Record<string, unknown>;
         const content = String(p.content ?? "");
@@ -90,13 +101,20 @@ async function handleChat(request: Request): Promise<Response> {
           documentId: String(p.documentId ?? ""),
           chunkId: String(p.chunkId ?? point.id),
           title: String(p.title ?? p.sourceLabel ?? "Untitled"),
+          content,
           quote: content.slice(0, 500),
           score: point.score ?? 0,
           pageNumber: typeof p.pageNumber === "number" ? p.pageNumber : undefined,
         };
       });
 
-      context = references.map((ref) => `[${ref.title}] ${ref.quote}`).join("\n\n");
+      // Build context from full chunk content so the LLM sees the complete text,
+      // not just the 500-char preview used for source citations.
+      context = references.map((ref) => `[${ref.title}]\n${ref.content}`).join("\n\n---\n\n");
+      console.log(`[chat] Context built — ${references.length} chunks, total chars: ${context.length}`);
+      if (context.length > 0) {
+        console.log(`[chat] Context preview (first 500 chars):\n${context.slice(0, 500)}`);
+      }
     } catch (err) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const qdrantError = (err as any)?.data?.status?.error as string | undefined;
@@ -125,22 +143,36 @@ async function handleChat(request: Request): Promise<Response> {
         });
       }
 
+      const systemPrompt = [
+        "You are a governed RAG assistant.",
+        "Answer only from the accessible document context below.",
+        "If the answer is not supported by the context, say so explicitly.",
+        "",
+        "Accessible document context:",
+        context || "No accessible documents.",
+      ].join("\n");
+
+      console.log(
+        `[chat] LLM call — model: ${env.AI_GATEWAY_MODEL}, messages: ${modelMessages.length}, context chars: ${context.length}, system prompt chars: ${systemPrompt.length}`,
+      );
+      if (!context) {
+        console.warn("[chat] LLM call with EMPTY context — no RAG data will be available");
+      }
+
       const result = streamText({
         model: gateway.chat(env.AI_GATEWAY_MODEL),
-        system: [
-          "You are a governed RAG assistant.",
-          "Answer only from the accessible document context below.",
-          "If the answer is not supported by the context, say so explicitly.",
-          "",
-          "Accessible document context:",
-          context || "No accessible documents.",
-        ].join("\n"),
+        system: systemPrompt,
         messages: modelMessages,
         providerOptions: {
           gateway: {
             tags: ["rag-chat"],
             user: user.id,
           },
+        },
+        onFinish: ({ usage, finishReason }) => {
+          console.log(
+            `[chat] LLM finished — reason: ${finishReason}, tokens: input=${usage?.inputTokens ?? "?"} output=${usage?.outputTokens ?? "?"}`,
+          );
         },
       });
 
