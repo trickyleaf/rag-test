@@ -1,1 +1,2 @@
 # rag-test
+ok
